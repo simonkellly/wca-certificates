@@ -31,6 +31,27 @@ export class PrintService {
   public participationCertificateJson = '';
 
   constructor() {
+    pdfMake.fonts = {
+      compote: {
+        normal: 'https://corsproxy.io/?url=https://fontsfree.net/wp-content/fonts/display/FontsFree-Net-Compote-Free.ttf',
+        bold: 'https://corsproxy.io/?url=https://fontsfree.net/wp-content/fonts/display/FontsFree-Net-Compote-Free.ttf',
+      },
+      barriecito: {
+        normal: 'https://corsproxy.io/?url=https://fonts.gstatic.com/s/googlesansflex/v5/t5sJIQcYNIWbFgDgAAzZ34auoVyXkJCOvp3SFWJbN5hF8Ju1x6sKCyp0l9sI40swNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4USKMo6qQzwliVdHAy9jxTDHg_ugnAakpwGc-cxgUqDCIUI.woff2',
+        bold: 'https://corsproxy.io/?url=https://fonts.gstatic.com/s/googlesansflex/v5/t5sJIQcYNIWbFgDgAAzZ34auoVyXkJCOvp3SFWJbN5hF8Ju1x6sKCyp0l9sI40swNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4USKMo6qQzwliVdHAy9jxTDHg_ugnAakpwGc-cxgUqDCIUI.woff2',
+      },
+      mono: {
+        normal: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/robotomono/v4/eJ4cxQe85Lo39t-LVoKa26CWcynf_cDxXwCLxiixG1c.ttf",
+        bold: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/robotomono/v4/N4duVc9C58uwPiY8_59Fz3e1Pd76Vl7zRpE7NLJQ7XU.ttf"
+      },
+      Roboto: {
+        normal: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxP.ttf",
+        bold: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOlCnqEu92Fr1MmEU9fBBc9.ttf",
+        italics: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOkCnqEu92Fr1Mu51xIIzc.ttf",
+        bolditalics: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOjCnqEu92Fr1Mu51TjARc9.ttf"
+      }
+    }
+
     this.podiumCertificateJson = TranslationHelper.getTemplate(this.language);
     this.podiumCertificateStyleJson = `{\n \
 "thisIsStyles": "yes"\n\
