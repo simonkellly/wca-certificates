@@ -48,7 +48,9 @@
             <button (click)="printCertificatesAsPdf()"
                     [disabled]="printDisabled()">Download as pdf</button>&nbsp;
             <button (click)="printCertificatesAsZip()"
-                    [disabled]="printDisabled()">Download as zip</button>
+                    [disabled]="printDisabled()">Download as zip</button>&nbsp;
+            <button (click)="printCertificatesAsPreview()"
+                    [disabled]="printDisabled()">Open in new tab</button>
           </div>
         </mat-tab>
         <mat-tab label="Customize podium certificates">
@@ -66,6 +68,7 @@
             </select>&nbsp;&nbsp;
             <button (click)="printService.loadLanguageTemplate()">Load language</button>&nbsp;&nbsp;This will overwrite any changes!<br><br>
             <textarea [(ngModel)]="printService.podiumCertificateJson"></textarea><br><br>
+            <textarea [(ngModel)]="printService.podiumCertificateStyleJson"></textarea><br><br>
             Background design: <input type="file" (change)="printService.handleBackgroundSelected($event.target.files)"/><br><br>
             Page orientation:&nbsp;&nbsp;<select class='form-control' [(ngModel)]='printService.pageOrientation'>
             <option value='landscape'>Landscape</option>

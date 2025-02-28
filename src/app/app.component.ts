@@ -97,6 +97,11 @@ export class AppComponent {
     this.apiService.logUserClicksDownloadCertificatesAsZip(this.wcif.id);
   }
 
+  printCertificatesAsPreview() {
+    this.printService.printCertificatesAsPreview(this.wcif, this.getSelectedEvents());
+    this.apiService.logUserClicksDownloadCertificatesAsZip(this.wcif.id);
+  }
+
   private getSelectedEvents() {
     return Array.from(this.events.filter(e => e['printCertificate']).map(e => e.id));
   }

@@ -3,28 +3,18 @@ export class TranslationHelper {
   public static getTemplate(language: string): string {
     switch (language) {
       case 'en':
-        return '[' + '\n' +
-          '"\\n\\n\\n",' + '\n' +
-          '{"text": "certificate.delegate", "bold": "true"},' + '\n' +
-          '", on behalf of the ",' + '\n' +
-          '{"text": "World Cube Association", "bold": "true"},' + '\n' +
-          '", and ",' + '\n' +
-          '{"text": "certificate.organizers", "bold": "true"},' + '\n' +
-          '", on behalf of the organisation team of ",' + '\n' +
-          '{"text": "certificate.competitionName", "bold": "true"},' + '\n' +
-          '", certify that",' + '\n' +
-          '"\\n\\n\\n",' + '\n' +
-          '{"text": "certificate.name", "fontSize": "32", "bold": "true"},' + '\n' +
-          '"\\n\\n\\n",' + '\n' +
-          '"has placed ",' + '\n' +
-          '{"text": "certificate.place", "bold": "true"},' + '\n' +
-          '" at ",' + '\n' +
-          '{"text": "certificate.event", "bold": "true"},' + '\n' +
-          '"\\n",' + '\n' +
-          '"with certificate.resultType of ",' + '\n' +
-          '{"text": "certificate.result", "bold": "true"},' + '\n' +
-          '" certificate.resultUnit"' + '\n' +
-          ']';
+        return `[\n \
+"\\n\\n\\n\\n\\n",\n \
+{"text": "certificate.event", "fontSize": "40", "bold": "true"},\n \
+"\\n",\n \
+{"text": "certificate.capitalisedPlace Place", "fontSize": "32", "bold": "true"},\n \
+"\\n\\n",\n \
+{"text": "certificate.name", "fontSize": "40", "bold": "true"},\n \
+"\\n\\n",\n \
+"with certificate.resultType of ",\n \
+{"text": "certificate.result", "bold": "true"},\n \
+"  certificate.resultUnit"\n \
+]`;
       case 'en-us':
         return '[' + '\n' +
           '"\\n\\n\\n",' + '\n' +

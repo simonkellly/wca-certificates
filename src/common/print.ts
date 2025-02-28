@@ -1,6 +1,6 @@
 import {Injectable} from '@angular/core';
 import {saveAs} from 'file-saver';
-import {Certificate} from './Certificate';
+import {Certificate} from './certificate';
 import {Event} from '@wca/helpers/lib/models/event';
 import {Result} from '@wca/helpers/lib/models/result';
 import {formatCentiseconds} from '@wca/helpers/lib/helpers/time';
@@ -27,10 +27,14 @@ export class PrintService {
   public countries: string = '';
 
   public podiumCertificateJson = '';
+  public podiumCertificateStyleJson = '';
   public participationCertificateJson = '';
 
   constructor() {
     this.podiumCertificateJson = TranslationHelper.getTemplate(this.language);
+    this.podiumCertificateStyleJson = `{\n \
+"thisIsStyles": "yes"\n\
+}`;
     this.participationCertificateJson = TranslationHelper.getParticipationTemplate(this.participationLanguage);
   }
 
@@ -135,6 +139,7 @@ export class PrintService {
     s = s.replace(/certificate.organizers/g, certificate.organizers);
     s = s.replace(/certificate.competitionName/g, certificate.competitionName);
     s = s.replace(/certificate.name/g, this.formatName(certificate.name));
+    s = s.replace(/certificate.capitalisedPlace/g, certificate.place.charAt(0).toUpperCase() + certificate.place.slice(1));
     s = s.replace(/certificate.place/g, certificate.place);
     s = s.replace(/certificate.event/g, certificate.event);
     s = s.replace(/certificate.resultType/g, certificate.resultType);
@@ -169,6 +174,18 @@ export class PrintService {
     const certificates: Certificate[] = this.getCertificates(events, wcif);
     if (certificates.length > 0) {
       this.downloadAsZip(certificates, wcif);
+    }
+  }
+
+  public printCertificatesAsPreview(wcif: any, events: string[]) {
+    const certificates: Certificate[] = this.getCertificates(events, wcif);
+    if (certificates.length > 0) {
+      const document = this.getDocument(this.pageOrientation, this.background);
+      certificates.forEach(value => {
+        document.content.push(this.getOneCertificateContent(value));
+      });
+      this.removeLastPageBreak(document);
+      pdfMake.createPdf(document).open();
     }
   }
 
@@ -251,6 +268,15 @@ export class PrintService {
         fontSize: 22
       }
     };
+    if (this.podiumCertificateStyleJson !== '{}') {
+      // append each style to the document
+      const styles = JSON.parse(this.podiumCertificateStyleJson);
+      for (const key in styles) {
+        if (styles.hasOwnProperty(key)) {
+          document.defaultStyle[key] = styles[key];
+        }
+      }
+    }
     if (background !== null) {
       document['background'] = {
         image: background,
