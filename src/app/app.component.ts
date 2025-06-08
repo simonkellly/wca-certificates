@@ -17,7 +17,10 @@ export class AppComponent {
   state: 'PRINT' | 'REFRESHING' = 'PRINT';
 
   // Info about competitions managed by user
-  competitionsToChooseFrom: Array<String> = null;
+  competitionsToChooseFrom: Array<any> = null;
+  inProgressCompetitions: Array<any> = [];
+  pastCompetitions: Array<any> = [];
+  futureCompetitions: Array<any> = [];
   competitionId: string;
   customCompetitionId: string;
   events: Event[];
@@ -41,8 +44,42 @@ export class AppComponent {
 
   handleGetCompetitions() {
     this.apiService.getRecentCompetitions().subscribe(comps => {
-      this.competitionsToChooseFrom = comps.map(c => c['id']);
+      this.competitionsToChooseFrom = comps;
+      this.categorizeCompetitions();
     });
+  }
+
+  categorizeCompetitions() {
+    if (!this.competitionsToChooseFrom) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to start of day for accurate comparison
+
+    this.inProgressCompetitions = [];
+    this.pastCompetitions = [];
+    this.futureCompetitions = [];
+
+    this.competitionsToChooseFrom.forEach(comp => {
+      const startDate = new Date(comp.start_date);
+      const endDate = new Date(comp.end_date);
+      
+      // Reset time part for accurate comparison
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+
+      if (today >= startDate && today <= endDate) {
+        this.inProgressCompetitions.push(comp);
+      } else if (today > endDate) {
+        this.pastCompetitions.push(comp);
+      } else {
+        this.futureCompetitions.push(comp);
+      }
+    });
+
+    // Sort each category by date
+    this.inProgressCompetitions.sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+    this.futureCompetitions.sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+    this.pastCompetitions.sort((a, b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime()); // Most recent first
   }
 
   handleCompetitionSelected(competitionId: string) {
@@ -173,6 +210,11 @@ export class AppComponent {
     return this.events.filter(e => e['printCertificate']).length === 0;
   }
 
+  toggleEventSelection(event: any, clickEvent: Event): void {
+    // Toggle the checkbox state
+    event.printCertificate = !event.printCertificate;
+  }
+
   printParticipationCertificatesAsPdf() {
     this.printService.printParticipationCertificatesAsPdf(this.wcif, this.personsWithAResult);
     this.apiService.logUserClicksDownloadParticipationCertificatesAsPdf(this.wcif.id);
@@ -185,6 +227,23 @@ export class AppComponent {
 
   version() {
     return environment.version;
+  }
+
+  // Helper method to format competition date for display
+  formatCompetitionDate(comp: any): string {
+    const startDate = new Date(comp.start_date);
+    const endDate = new Date(comp.end_date);
+    
+    const options: Intl.DateTimeFormatOptions = { 
+      month: 'short', 
+      day: 'numeric' 
+    };
+    
+    if (comp.start_date === comp.end_date) {
+      return startDate.toLocaleDateString('en-US', options);
+    } else {
+      return `${startDate.toLocaleDateString('en-US', options)} - ${endDate.toLocaleDateString('en-US', options)}`;
+    }
   }
 
 }

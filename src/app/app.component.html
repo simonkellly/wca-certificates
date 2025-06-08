@@ -1,130 +1,345 @@
 <div class="wrapper">
-  <div class="header center">
-    <h1>WCA Competition Certificates</h1>&nbsp;<h6>{{version()}}</h6>
+  <!-- Header -->
+  <div class="header">
+    <div class="flex items-center">
+      <h1>WCA Competition Certificates</h1>
+      <h6>{{version()}}</h6>
+    </div>
   </div>
 
-  <div class="content center">
-  <!-- LOGIN -->
-    <div *ngIf="! apiService.oauthToken">
-      <button class="login" (click)="handleLoginToWca()">First: login</button><br>
+  <!-- Main Content -->
+  <div class="content">
+    
+    <!-- LOGIN SECTION -->
+    <div *ngIf="! apiService.oauthToken" class="login-section">
+      <h2 style="color: var(--accent-primary); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">Authentication Required</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 24px;">Connect to WCA to access your competitions</p>
+      <button class="login btn-primary" (click)="handleLoginToWca()">Login to WCA</button>
     </div>
 
-  <!-- SELECT COMP -->
-    <div *ngIf="apiService.oauthToken && ! competitionId">
-      <p>Welcome!</p>
+    <!-- COMPETITION SELECTION -->
+    <div *ngIf="apiService.oauthToken && ! competitionId" class="comp-selection">
+      <h2>Select Competition</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 20px;">Choose from your managed competitions or enter a custom ID</p>
+      
       <div *ngIf="competitionsToChooseFrom">
-        <p>Select a competition:</p>
-        <p *ngFor="let competitionId of competitionsToChooseFrom">
-          <button class="competition" (click)="handleCompetitionSelected(competitionId)">{{competitionId}}</button>
-        </p>
-        <p>Custom competition: <input type="text" [(ngModel)]="customCompetitionId">&nbsp;
-          <button class="competition" (click)="handleCompetitionSelected(customCompetitionId)">Load competitionId</button>
-        </p>
-        <p *ngIf="competitionsToChooseFrom.length === 0">You don't have any competition available :-(</p>
+        
+        <!-- IN PROGRESS COMPETITIONS -->
+        <div *ngIf="inProgressCompetitions.length > 0" class="comp-category">
+          <div class="comp-category-header">
+            <h3 style="color: var(--success-color); margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              ● In Progress ({{ inProgressCompetitions.length }})
+            </h3>
+          </div>
+          <div class="comp-grid">
+            <button *ngFor="let comp of inProgressCompetitions" 
+                    class="competition competition-active" 
+                    (click)="handleCompetitionSelected(comp.id)"
+                    [title]="comp.name + ' • ' + formatCompetitionDate(comp)">
+              <div class="comp-name">{{ comp.name }}</div>
+              <div class="comp-date">{{ formatCompetitionDate(comp) }}</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- FUTURE COMPETITIONS -->
+        <div *ngIf="futureCompetitions.length > 0" class="comp-category">
+          <div class="comp-category-header">
+            <h3 style="color: var(--accent-primary); margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              ↗ Upcoming ({{ futureCompetitions.length }})
+            </h3>
+          </div>
+          <div class="comp-grid">
+            <button *ngFor="let comp of futureCompetitions" 
+                    class="competition competition-future" 
+                    (click)="handleCompetitionSelected(comp.id)"
+                    [title]="comp.name + ' • ' + formatCompetitionDate(comp)">
+              <div class="comp-name">{{ comp.name }}</div>
+              <div class="comp-date">{{ formatCompetitionDate(comp) }}</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- PAST COMPETITIONS -->
+        <div *ngIf="pastCompetitions.length > 0" class="comp-category">
+          <div class="comp-category-header">
+            <h3 style="color: var(--text-muted); margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              ✓ Completed ({{ pastCompetitions.length }})
+            </h3>
+          </div>
+          <div class="comp-grid">
+            <button *ngFor="let comp of pastCompetitions" 
+                    class="competition competition-past" 
+                    (click)="handleCompetitionSelected(comp.id)"
+                    [title]="comp.name + ' • ' + formatCompetitionDate(comp)">
+              <div class="comp-name">{{ comp.name }}</div>
+              <div class="comp-date">{{ formatCompetitionDate(comp) }}</div>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Custom Competition Input -->
+        <div class="custom-comp">
+          <label style="color: var(--text-secondary); font-size: 12px; min-width: 120px;">Custom ID:</label>
+          <input type="text" 
+                 [(ngModel)]="customCompetitionId" 
+                 placeholder="Enter competition ID"
+                 style="flex: 1;">
+          <button class="btn-secondary" (click)="handleCompetitionSelected(customCompetitionId)">Load</button>
+        </div>
+        
+        <div *ngIf="competitionsToChooseFrom.length === 0" 
+             style="text-align: center; color: var(--warning-color); padding: 20px; background: var(--bg-tertiary); border-radius: 4px; margin-top: 16px;">
+          No competitions available for your account
+        </div>
       </div>
     </div>
 
-    <div *ngIf="competitionId && wcif">
+    <!-- MAIN INTERFACE -->
+    <div *ngIf="competitionId && wcif" class="comp-interface">
+      
+      <!-- Competition Header -->
+      <div class="comp-header">
+        <div style="flex: 1; min-width: 0;">
+          <h2 class="comp-title">{{ competitionId }}</h2>
+          <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">
+            {{ events?.length }} events • {{ acceptedPersons }} competitors
+          </div>
+        </div>
+        <div class="comp-actions">
+          <button class="btn-secondary" (click)="handleRefreshCompetition()">Refresh Data</button>
+          <button class="btn-secondary" (click)="printEmptyCertificate()">Empty Certificate</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
       <mat-tab-group>
-        <mat-tab label="Print podium certificates">
-          <br>
-          <div *ngIf="state === 'REFRESHING'">
-            <p>Refreshing...</p>
-          </div>
-          <div *ngIf="state !== 'REFRESHING'">
-            <!-- INFORMATION ABOUT COMP AND PRINTING -->
-            <p> Selected competition: {{ competitionId }}<br><br>
-              <button (click)="printEmptyCertificate()"
-              >Empty certificate for {{ competitionId }}</button><br><br>
-              {{ events?.length }} events found...&nbsp;&nbsp;<button (click)="handleRefreshCompetition()"
-              >Refresh results</button></p>
-            <table class="center">
-              <tr *ngFor="let event of wcif.events">
-                <td><input type="checkbox" [(ngModel)]="event.printCertificate"></td>
-                <td>{{ printService.getEventName(event.id) }}</td>
-                <td>{{ getWarningIfAny(event.id) }}</td>
-              </tr>
-            </table><br>
-            <button (click)="printCertificatesAsPdf()"
-                    [disabled]="printDisabled()">Download as pdf</button>&nbsp;
-            <button (click)="printCertificatesAsZip()"
-                    [disabled]="printDisabled()">Download as zip</button>&nbsp;
-            <button (click)="printCertificatesAsPreview()"
-                    [disabled]="printDisabled()">Open in new tab</button>
-          </div>
-        </mat-tab>
-        <mat-tab label="Customize podium certificates">
-          <!-- CUSTOMIZE -->
-          <div>
-            <br>
-            <select class='form-control' [(ngModel)]='printService.language'>
-              <option value='nl'>Dutch</option>
-              <option value='en'>English (UK)</option>
-              <option value='en-us'>English (US)</option>
-              <option value='fr'>French</option>
-              <option value='de-ch'>German (Switzerland)</option>
-              <option value='es-mx'>Mexican Spanish</option>
-              <option value='ru'>Russian</option>
-            </select>&nbsp;&nbsp;
-            <button (click)="printService.loadLanguageTemplate()">Load language</button>&nbsp;&nbsp;This will overwrite any changes!<br><br>
-            <textarea [(ngModel)]="printService.podiumCertificateJson"></textarea><br><br>
-            <textarea [(ngModel)]="printService.podiumCertificateStyleJson"></textarea><br><br>
-            Background design: <input type="file" (change)="printService.handleBackgroundSelected($event.target.files)"/>&nbsp;<button (click)="printService.clearBackground()">Clear background</button><br><br>
-            Page orientation:&nbsp;&nbsp;<select class='form-control' [(ngModel)]='printService.pageOrientation'>
-            <option value='landscape'>Landscape</option>
-            <option value='portrait'>Portrait</option>
-          </select><br><br>
-            <!-- <input type="checkbox" [(ngModel)]='printService.showLocalNames'/>Show local names<br><br> -->
-            Only use competitors from countries with ISO (semicolon-separated):&nbsp;&nbsp;<input [(ngModel)]='printService.countries' type="text"/><br><br>
-          </div>
-        </mat-tab>
-        <mat-tab label="Print participation certificates">
-          <br>
-          <div *ngIf="state === 'REFRESHING'">
-            <p>Refreshing...</p>
-          </div>
-          <div *ngIf="state !== 'REFRESHING'">
-            <p> Selected competition: {{ competitionId }}<br><br>
-              {{ events?.length }} events found...&nbsp;&nbsp;<button (click)="handleRefreshCompetition()"
-              >Refresh results</button><br><br>
-              {{ acceptedPersons - personsWithAResult.length }}/{{ acceptedPersons }} competitor(s) don't have any result yet
-            </p>
-            <button (click)="printParticipationCertificatesAsPdf()"
-                    [disabled]="personsWithAResult.length === 0"
-              >Download {{ personsWithAResult.length }} participation certificates as pdf</button>&nbsp;
-            <button (click)="printParticipationCertificatesAsZip()"
-                    [disabled]="personsWithAResult.length === 0"
-            >Download {{ personsWithAResult.length }} participation certificates as zip</button>
-            <p>Note: generating may take a few seconds, depending on the number of competitors</p>
+        
+        <!-- PODIUM CERTIFICATES TAB -->
+        <mat-tab label="Podium Certificates">
+          <div class="events-section">
+            <div *ngIf="state === 'REFRESHING'" class="status-refreshing">
+              Refreshing competition data...
+            </div>
+            
+            <div *ngIf="state !== 'REFRESHING'">
+              <!-- Events Table -->
+              <table class="events-table">
+                <thead>
+                  <tr>
+                    <th style="width: 60px;">Print</th>
+                    <th style="width: 45%;">Event</th>
+                    <th style="width: auto;">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let event of wcif.events" 
+                      class="event-row"
+                      (click)="toggleEventSelection(event, $event)"
+                      [class.selected]="event.printCertificate">
+                    <td>
+                      <input type="checkbox" 
+                             class="event-checkbox" 
+                             [(ngModel)]="event.printCertificate"
+                             (click)="$event.stopPropagation()">
+                    </td>
+                    <td style="font-weight: 500;">{{ printService.getEventName(event.id) }}</td>
+                    <td class="event-warning">{{ getWarningIfAny(event.id) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              
+              <!-- Download Actions -->
+              <div style="display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap;">
+                <button class="btn-primary" 
+                        (click)="printCertificatesAsPdf()"
+                        [disabled]="printDisabled()">
+                  Download PDF
+                </button>
+                <button class="btn-secondary" 
+                        (click)="printCertificatesAsZip()"
+                        [disabled]="printDisabled()">
+                  Download ZIP
+                </button>
+                <button class="btn-secondary" 
+                        (click)="printCertificatesAsPreview()"
+                        [disabled]="printDisabled()">
+                  Preview
+                </button>
+              </div>
+            </div>
           </div>
         </mat-tab>
-        <mat-tab label="Customize participation certificates">
-          <br>
-          <select class='form-control' [(ngModel)]='printService.participationLanguage'>
-            <option value='nl'>Dutch</option>
-            <option value='en'>English (UK)</option>
-            <option value='en-us'>English (US)</option>
-            <option value='de-ch'>German (Switzerland)</option>
-            <option value='es-mx'>Mexican Spanish</option>
-            <option value='ru'>Russian</option>
-          </select>&nbsp;&nbsp;
-          <button (click)="printService.loadLanguageParticipationTemplate()">Load language</button>&nbsp;&nbsp;This will overwrite any changes!<br><br>
-          <textarea [(ngModel)]="printService.participationCertificateJson"></textarea><br><br>
-          Background design: <input type="file" (change)="printService.handleParticipationBackgroundSelected($event.target.files)"/>&nbsp;<button (click)="printService.clearParticipationBackground()">Clear background</button><br><br>
-          Page orientation:&nbsp;&nbsp;<select class='form-control' [(ngModel)]='printService.participationPageOrientation'>
-          <option value='landscape'>Landscape</option>
-          <option value='portrait'>Portrait</option>
-        </select><br><br>
+        
+        <!-- CUSTOMIZE PODIUM TAB -->
+        <mat-tab label="Customize Podium">
+          <div class="p-4">
+            
+            <!-- Language Selection -->
+            <div class="flex items-center gap-4 mb-4">
+              <label style="color: var(--text-secondary); min-width: 80px;">Language:</label>
+              <select [(ngModel)]='printService.language' style="flex: 1; max-width: 200px;">
+                <option value='nl'>Dutch</option>
+                <option value='en'>English (UK)</option>
+                <option value='en-us'>English (US)</option>
+                <option value='fr'>French</option>
+                <option value='de-ch'>German (Switzerland)</option>
+                <option value='es-mx'>Mexican Spanish</option>
+                <option value='ru'>Russian</option>
+              </select>
+              <button class="btn-secondary" (click)="printService.loadLanguageTemplate()">Load Template</button>
+              <span style="color: var(--warning-color); font-size: 11px;">This will overwrite changes!</span>
+            </div>
+
+            <!-- Template Configuration -->
+            <div class="mb-4">
+              <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">Certificate Template:</label>
+              <textarea [(ngModel)]="printService.podiumCertificateJson" 
+                        placeholder="Certificate template JSON..."></textarea>
+            </div>
+
+            <div class="mb-4">
+              <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">Style Configuration:</label>
+              <textarea [(ngModel)]="printService.podiumCertificateStyleJson" 
+                        placeholder="Style configuration JSON..."></textarea>
+            </div>
+
+            <!-- Additional Options -->
+            <div class="flex flex-col gap-4">
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">Background:</label>
+                <input type="file" (change)="printService.handleBackgroundSelected($event.target.files)"/>
+                <button class="btn-secondary" (click)="printService.clearBackground()">Clear</button>
+              </div>
+
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">Orientation:</label>
+                <select [(ngModel)]='printService.pageOrientation' style="max-width: 150px;">
+                  <option value='landscape'>Landscape</option>
+                  <option value='portrait'>Portrait</option>
+                </select>
+              </div>
+
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">Countries filter:</label>
+                <input [(ngModel)]='printService.countries' 
+                       type="text" 
+                       placeholder="ISO codes (semicolon-separated)"
+                       style="flex: 1; max-width: 300px;"/>
+              </div>
+            </div>
+          </div>
         </mat-tab>
+        
+        <!-- PARTICIPATION CERTIFICATES TAB -->
+        <mat-tab label="Participation Certificates">
+          <div class="events-section">
+            <div *ngIf="state === 'REFRESHING'" class="status-refreshing">
+              Refreshing competition data...
+            </div>
+            
+            <div *ngIf="state !== 'REFRESHING'">
+              <!-- Participation Stats -->
+              <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 6px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                  <div>
+                    <div style="color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Total Competitors</div>
+                    <div style="color: var(--accent-primary); font-size: 20px; font-weight: 600;">{{ acceptedPersons }}</div>
+                  </div>
+                  <div>
+                    <div style="color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">With Results</div>
+                    <div style="color: var(--success-color); font-size: 20px; font-weight: 600;">{{ personsWithAResult.length }}</div>
+                  </div>
+                  <div>
+                    <div style="color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">No Results Yet</div>
+                    <div style="color: var(--warning-color); font-size: 20px; font-weight: 600;">{{ acceptedPersons - personsWithAResult.length }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Download Actions -->
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button class="btn-primary" 
+                        (click)="printParticipationCertificatesAsPdf()"
+                        [disabled]="personsWithAResult.length === 0">
+                  Download {{ personsWithAResult.length }} Certificates (PDF)
+                </button>
+                <button class="btn-secondary" 
+                        (click)="printParticipationCertificatesAsZip()"
+                        [disabled]="personsWithAResult.length === 0">
+                  Download {{ personsWithAResult.length }} Certificates (ZIP)
+                </button>
+              </div>
+              
+              <div style="color: var(--text-muted); font-size: 11px; margin-top: 12px;">
+                Note: Generation may take a few seconds depending on the number of competitors
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+        
+        <!-- CUSTOMIZE PARTICIPATION TAB -->
+        <mat-tab label="Customize Participation">
+          <div class="p-4">
+            
+            <!-- Language Selection -->
+            <div class="flex items-center gap-4 mb-4">
+              <label style="color: var(--text-secondary); min-width: 80px;">Language:</label>
+              <select [(ngModel)]='printService.participationLanguage' style="flex: 1; max-width: 200px;">
+                <option value='nl'>Dutch</option>
+                <option value='en'>English (UK)</option>
+                <option value='en-us'>English (US)</option>
+                <option value='de-ch'>German (Switzerland)</option>
+                <option value='es-mx'>Mexican Spanish</option>
+                <option value='ru'>Russian</option>
+              </select>
+              <button class="btn-secondary" (click)="printService.loadLanguageParticipationTemplate()">Load Template</button>
+              <span style="color: var(--warning-color); font-size: 11px;">This will overwrite changes!</span>
+            </div>
+
+            <!-- Template Configuration -->
+            <div class="mb-4">
+              <label style="color: var(--text-secondary); display: block; margin-bottom: 8px;">Certificate Template:</label>
+              <textarea [(ngModel)]="printService.participationCertificateJson" 
+                        placeholder="Participation certificate template JSON..."></textarea>
+            </div>
+
+            <!-- Additional Options -->
+            <div class="flex flex-col gap-4">
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">Background:</label>
+                <input type="file" (change)="printService.handleParticipationBackgroundSelected($event.target.files)"/>
+                <button class="btn-secondary" (click)="printService.clearParticipationBackground()">Clear</button>
+              </div>
+
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">Orientation:</label>
+                <select [(ngModel)]='printService.participationPageOrientation' style="max-width: 150px;">
+                  <option value='landscape'>Landscape</option>
+                  <option value='portrait'>Portrait</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+        
       </mat-tab-group>
     </div>
 
-    <div *ngIf="error">{{error.toString()}}</div>
-    <div *ngIf="loading">Loading...</div>
+    <!-- Error Display -->
+    <div *ngIf="error" class="error-message">
+      <strong>Error:</strong> {{error.toString()}}
+    </div>
+    
+    <!-- Loading Display -->
+    <div *ngIf="loading" class="loading-message">
+      Loading competition data...
+    </div>
   </div>
 
-  <div class="footer left">
-    <a href="https://github.com/Goosly/wca-certificates/wiki" target="_blank">Wiki</a>&nbsp;
-    <a href="https://github.com/Goosly/wca-certificates" target="_blank">Github</a>
+  <!-- Footer -->
+  <div class="footer">
+    <a href="https://github.com/Goosly/wca-certificates/wiki" target="_blank">Documentation</a>
+    <a href="https://github.com/Goosly/wca-certificates" target="_blank">Source Code</a>
   </div>
 </div>
