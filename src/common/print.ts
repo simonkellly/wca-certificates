@@ -52,10 +52,11 @@ export class PrintService {
     }
 
     this.podiumCertificateJson = TranslationHelper.getTemplate(this.language);
-    this.podiumCertificateStyleJson = `{
-  "font": "Roboto",
-  "otherFonts": ["Barriecito", "mono"]
-}`;
+    const defaultStyle = {
+      font: 'Roboto',
+      otherFonts: ['Barriecito', 'mono']
+    }
+    this.podiumCertificateStyleJson = JSON.stringify(defaultStyle, null, 2);
     this.participationCertificateJson = TranslationHelper.getParticipationTemplate(this.participationLanguage);
   }
 
