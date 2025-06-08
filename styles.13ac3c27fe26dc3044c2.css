@@ -1,3 +1,5 @@
+@import url(https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap);body,html{height:100%;margin:0;padding:0;font-family:Roboto Mono,SF Mono,Monaco,Consolas,monospace;background:#0a0f1a;color:#e5e7eb}.mat-tab-group,.mat-tab-label{font-family:Roboto Mono,SF Mono,Monaco,Consolas,monospace!important}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#1f2937}::-webkit-scrollbar-thumb{background:#374151;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#00d4ff}::-moz-selection{background:rgba(0,212,255,.3);color:#e5e7eb}::selection{background:rgba(0,212,255,.3);color:#e5e7eb}:focus-visible{outline:2px solid #00d4ff;outline-offset:2px}
+
 /*!
  *  Font Awesome 4.7.0 by @davegandy - http://fontawesome.io - @fontawesome
  *  License - http://fontawesome.io/license (Font: SIL OFL 1.1, CSS: MIT License)
