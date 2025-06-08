@@ -1,4 +1,5 @@
 import {Injectable} from '@angular/core';
+import { Location, LocationStrategy } from '@angular/common';
 import {saveAs} from 'file-saver';
 import {Certificate} from './certificate';
 import {Event} from '@wca/helpers/lib/models/event';
@@ -30,31 +31,30 @@ export class PrintService {
   public podiumCertificateStyleJson = '';
   public participationCertificateJson = '';
 
-  constructor() {
+  constructor(private location: Location) {
+    const baseUrl = this.location.prepareExternalUrl('/');
+    console.log(baseUrl);
     pdfMake.fonts = {
-      compote: {
-        normal: 'https://corsproxy.io/?url=https://fontsfree.net/wp-content/fonts/display/FontsFree-Net-Compote-Free.ttf',
-        bold: 'https://corsproxy.io/?url=https://fontsfree.net/wp-content/fonts/display/FontsFree-Net-Compote-Free.ttf',
-      },
       barriecito: {
-        normal: 'https://corsproxy.io/?url=https://fonts.gstatic.com/s/googlesansflex/v5/t5sJIQcYNIWbFgDgAAzZ34auoVyXkJCOvp3SFWJbN5hF8Ju1x6sKCyp0l9sI40swNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4USKMo6qQzwliVdHAy9jxTDHg_ugnAakpwGc-cxgUqDCIUI.woff2',
-        bold: 'https://corsproxy.io/?url=https://fonts.gstatic.com/s/googlesansflex/v5/t5sJIQcYNIWbFgDgAAzZ34auoVyXkJCOvp3SFWJbN5hF8Ju1x6sKCyp0l9sI40swNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4USKMo6qQzwliVdHAy9jxTDHg_ugnAakpwGc-cxgUqDCIUI.woff2',
+        normal: `${baseUrl}fonts/Barriecito-Regular.ttf`,
+        bold: `${baseUrl}fonts/Barriecito-Regular.ttf`,
       },
       mono: {
-        normal: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/robotomono/v4/eJ4cxQe85Lo39t-LVoKa26CWcynf_cDxXwCLxiixG1c.ttf",
-        bold: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/robotomono/v4/N4duVc9C58uwPiY8_59Fz3e1Pd76Vl7zRpE7NLJQ7XU.ttf"
+        normal: `${baseUrl}fonts/RobotoMono.ttf`,
+        bold: `${baseUrl}fonts/RobotoMono-Bold.ttf`
       },
       Roboto: {
-        normal: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxP.ttf",
-        bold: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOlCnqEu92Fr1MmEU9fBBc9.ttf",
-        italics: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOkCnqEu92Fr1Mu51xIIzc.ttf",
-        bolditalics: "https://corsproxy.io/?url=http://fonts.gstatic.com/s/roboto/v18/KFOjCnqEu92Fr1Mu51TjARc9.ttf"
-      }
+        normal: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf',
+        bold: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Medium.ttf',
+        italics: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Italic.ttf',
+        bolditalics: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-MediumItalic.ttf'
+      },
     }
 
     this.podiumCertificateJson = TranslationHelper.getTemplate(this.language);
-    this.podiumCertificateStyleJson = `{\n \
-"thisIsStyles": "yes"\n\
+    this.podiumCertificateStyleJson = `{
+  "font": "Roboto",
+  "otherFonts": ["Barriecito", "mono"]
 }`;
     this.participationCertificateJson = TranslationHelper.getParticipationTemplate(this.participationLanguage);
   }
@@ -232,14 +232,15 @@ export class PrintService {
   }
 
   private getCertificates(events: string[], wcif: any): Certificate[] {
+    const revEvents = [...events].reverse();
     const certificates: Certificate[] = [];
-    for (let i = 0; i < events.length; i++) {
-      const event: Event = wcif.events.filter(e => e.id === events[i])[0];
+    for (let i = 0; i < revEvents.length; i++) {
+      const event: Event = wcif.events.filter(e => e.id === revEvents[i])[0];
       const podiumPlaces = event['podiumPlaces'];
       const format = event.rounds[event.rounds.length - 1].format;
 
       for (let p = 0; p < podiumPlaces.length; p++) {
-        certificates.push(this.getNewCertificate(wcif, events[i], format, podiumPlaces[p]));
+        certificates.push(this.getNewCertificate(wcif, revEvents[i], format, podiumPlaces[p]));
       }
     }
     if (certificates.length === 0) {
@@ -269,6 +270,14 @@ export class PrintService {
     reader.onloadend = function (e) {
       this.participationBackground = reader.result;
     }.bind(this);
+  }
+
+  public clearBackground() {
+    this.background = null;
+  }
+
+  public clearParticipationBackground() {
+    this.participationBackground = null;
   }
 
   private removeLastPageBreak(document: any): void {
