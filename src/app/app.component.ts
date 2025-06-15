@@ -246,4 +246,14 @@ export class AppComponent {
     }
   }
 
+  clearBackground(fileInput: HTMLInputElement) {
+    this.printService.clearBackground();
+    fileInput.value = '';
+  }
+
+  clearParticipationBackground(fileInput: HTMLInputElement) {
+    this.printService.clearParticipationBackground();
+    fileInput.value = '';
+  }
+
 }

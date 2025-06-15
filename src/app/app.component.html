@@ -208,8 +208,12 @@
             <div class="flex flex-col gap-4">
               <div class="flex items-center gap-4">
                 <label style="color: var(--text-secondary); min-width: 120px;">Background:</label>
-                <input type="file" (change)="printService.handleBackgroundSelected($event.target.files)"/>
-                <button class="btn-secondary" (click)="printService.clearBackground()">Clear</button>
+                <input #backgroundFileInput type="file" (change)="printService.handleBackgroundSelected($event.target.files)"/>
+                <button class="btn-secondary" 
+                        (click)="clearBackground(backgroundFileInput)"
+                        [disabled]="!printService.background">Clear</button>
+                <span *ngIf="printService.background" style="color: var(--success-color); font-size: 12px;">✓ Background set</span>
+                <span *ngIf="!printService.background" style="color: var(--text-muted); font-size: 12px;">No background</span>
               </div>
 
               <div class="flex items-center gap-4">
@@ -308,8 +312,12 @@
             <div class="flex flex-col gap-4">
               <div class="flex items-center gap-4">
                 <label style="color: var(--text-secondary); min-width: 120px;">Background:</label>
-                <input type="file" (change)="printService.handleParticipationBackgroundSelected($event.target.files)"/>
-                <button class="btn-secondary" (click)="printService.clearParticipationBackground()">Clear</button>
+                <input #participationBackgroundFileInput type="file" (change)="printService.handleParticipationBackgroundSelected($event.target.files)"/>
+                <button class="btn-secondary" 
+                        (click)="clearParticipationBackground(participationBackgroundFileInput)"
+                        [disabled]="!printService.participationBackground">Clear</button>
+                <span *ngIf="printService.participationBackground" style="color: var(--success-color); font-size: 12px;">✓ Background set</span>
+                <span *ngIf="!printService.participationBackground" style="color: var(--text-muted); font-size: 12px;">No background</span>
               </div>
 
               <div class="flex items-center gap-4">

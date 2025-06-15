@@ -261,17 +261,17 @@ export class PrintService {
   public handleBackgroundSelected(files: FileList) {
     const reader = new FileReader();
     reader.readAsDataURL(files.item(0));
-    reader.onloadend = function (e) {
-      this.background = reader.result;
-    }.bind(this);
+    reader.onloadend = (e) => {
+      this.background = reader.result as string;
+    };
   }
 
   public handleParticipationBackgroundSelected(files: FileList) {
     const reader = new FileReader();
     reader.readAsDataURL(files.item(0));
-    reader.onloadend = function (e) {
-      this.participationBackground = reader.result;
-    }.bind(this);
+    reader.onloadend = (e) => {
+      this.participationBackground = reader.result as string;
+    };
   }
 
   public clearBackground() {
