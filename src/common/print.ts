@@ -32,8 +32,9 @@ export class PrintService {
   public participationCertificateJson = '';
 
   constructor(private location: Location) {
-    const baseUrl = this.location.prepareExternalUrl('/');
-    console.log(baseUrl);
+    const isLocal = window.location.hostname === 'localhost';
+    const baseUrl = isLocal ? 'http://localhost:4200/' : 'https://simonkellly.github.io/wca-certificates/';
+    
     pdfMake.fonts = {
       barriecito: {
         normal: `${baseUrl}fonts/Barriecito-Regular.ttf`,
@@ -54,7 +55,7 @@ export class PrintService {
     this.podiumCertificateJson = TranslationHelper.getTemplate(this.language);
     const defaultStyle = {
       font: 'Roboto',
-      otherFonts: ['Barriecito', 'mono']
+      otherFonts: ['barriecito', 'mono']
     }
     this.podiumCertificateStyleJson = JSON.stringify(defaultStyle, null, 2);
     this.participationCertificateJson = TranslationHelper.getParticipationTemplate(this.participationLanguage);
