@@ -26,6 +26,7 @@ export class PrintService {
   public background: string = null;
   public participationBackground: string = null;
   public countries: string = '';
+  public xOffset: number = 0;
 
   public podiumCertificateJson = '';
   public podiumCertificateStyleJson = '';
@@ -153,6 +154,7 @@ export class PrintService {
     return {
       text: textObject,
       alignment: 'center',
+      margin: [this.xOffset, 0, -this.xOffset, 0],
       pageBreak: 'after'
     };
   }
@@ -405,7 +407,8 @@ export class PrintService {
     const textObject = JSON.parse(jsonWithReplacedStrings);
     return {
       text: textObject,
-      alignment: 'center'
+      alignment: 'center',
+      margin: [this.xOffset, 0, -this.xOffset, 0]
     };
   }
 

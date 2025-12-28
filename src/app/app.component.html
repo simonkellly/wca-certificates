@@ -231,6 +231,15 @@
                        placeholder="ISO codes (semicolon-separated)"
                        style="flex: 1; max-width: 300px;"/>
               </div>
+
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">X Offset:</label>
+                <input [(ngModel)]='printService.xOffset' 
+                       type="number" 
+                       placeholder="0"
+                       style="max-width: 100px;"/>
+                <span style="color: var(--text-muted); font-size: 12px;">Points (positive = right, negative = left)</span>
+              </div>
             </div>
           </div>
         </mat-tab>
@@ -326,6 +335,15 @@
                   <option value='landscape'>Landscape</option>
                   <option value='portrait'>Portrait</option>
                 </select>
+              </div>
+
+              <div class="flex items-center gap-4">
+                <label style="color: var(--text-secondary); min-width: 120px;">X Offset:</label>
+                <input [(ngModel)]='printService.xOffset' 
+                       type="number" 
+                       placeholder="0"
+                       style="max-width: 100px;"/>
+                <span style="color: var(--text-muted); font-size: 12px;">Points (positive = right, negative = left)</span>
               </div>
             </div>
           </div>
