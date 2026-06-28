@@ -10,11 +10,11 @@ import {WCIF, PdfDocument, PdfMakeStatic, PdfContentItem} from './types';
 import {environment} from '../environments/environment';
 import {
   getUnofficialCertificateDefinition,
-  getUnofficialPodium,
-  isUnofficialCertificateId
+  isUnofficialCertificateId,
+  UnofficialPodiumState,
 } from './unofficial-certificates';
-import {derivePodiumPlaces, EventWithPodium} from './podium-data';
-import type {Result as WcaApiResult} from '../wca-api/openapiClient';
+import {derivePodiumPlaces, PodiumResult} from './podium-data';
+import {CompetitionCertificateData} from './competition-certificate-data';
 
 declare const pdfMake: PdfMakeStatic;
 
@@ -96,13 +96,13 @@ export class PrintService {
     return getEventName(eventId as EventId).replace(' Cube', '');
   }
 
-  private getNewCertificate(wcif: WCIF, eventId: string, format: string, result: Result, eventDisplayName?: string): Certificate {
+  private getNewCertificate(wcif: WCIF, eventId: string, format: string, result: PodiumResult, eventDisplayName?: string): Certificate {
     const certificate: Certificate = new Certificate();
     certificate.delegate = this.getPersonsWithRole(wcif, 'delegate');
     certificate.organizers = this.getPersonsWithRole(wcif, 'organizer');
     certificate.competitionName = wcif.name;
     certificate.name = wcif.persons.filter(p => p.registrantId === result.personId)[0].name;
-    certificate.place = this.getPlace(result['rankingAfterFiltering']);
+    certificate.place = this.getPlace(result.rankingAfterFiltering ?? result.ranking);
     certificate.event = eventDisplayName ?? this.getEventName(eventId);
     certificate.resultType = this.getResultType(format, result);
     certificate.result = this.formatResultForEvent(result, eventId);
@@ -214,10 +214,10 @@ export class PrintService {
       : (name).replace(new RegExp(' \\(.+\\)'), '');
   }
 
-  public printCertificatesAsPdf(wcif: WCIF, events: string[], apiResults: WcaApiResult[] = []) {
-    const certificates: Certificate[] = this.getCertificates(events, wcif, apiResults);
+  public printCertificatesAsPdf(certificateData: CompetitionCertificateData, events: string[]) {
+    const certificates: Certificate[] = this.getCertificates(events, certificateData);
     if (certificates.length > 0) {
-      this.downloadAsPdf(certificates, wcif);
+      this.downloadAsPdf(certificates, certificateData.wcif);
     }
   }
 
@@ -229,8 +229,8 @@ export class PrintService {
     });
   }
 
-  public printCertificatesAsPreview(wcif: WCIF, events: string[], apiResults: WcaApiResult[] = []) {
-    const certificates: Certificate[] = this.getCertificates(events, wcif, apiResults);
+  public printCertificatesAsPreview(certificateData: CompetitionCertificateData, events: string[]) {
+    const certificates: Certificate[] = this.getCertificates(events, certificateData);
     if (certificates.length > 0) {
       const document = this.getDocument(this.pageOrientation, this.background, true);
       this.addCertificatesToDocument(document, certificates);
@@ -248,15 +248,16 @@ export class PrintService {
     this.removeLastPageBreak(document);
   }
 
-  private getCertificates(events: string[], wcif: WCIF, apiResults: WcaApiResult[]): Certificate[] {
+  private getCertificates(events: string[], certificateData: CompetitionCertificateData): Certificate[] {
+    const {wcif, unofficialPodiums} = certificateData;
     const revEvents = [...events].reverse();
     const certificates: Certificate[] = [];
     for (const eventId of revEvents) {
       if (isUnofficialCertificateId(eventId)) {
-        certificates.push(...this.getUnofficialCertificates(eventId, wcif, apiResults));
+        certificates.push(...this.getUnofficialCertificates(eventId, wcif, unofficialPodiums));
         continue;
       }
-      const event = wcif.events.filter(e => e.id === eventId)[0] as EventWithPodium | undefined;
+      const event = wcif.events.find(e => e.id === eventId);
       if (!event?.hasPodiumResults) {
         certificates.push(...this.getBlankPodiumCertificates(wcif, eventId));
         continue;
@@ -288,27 +289,30 @@ export class PrintService {
     return certificates;
   }
 
-  private getUnofficialCertificates(unofficialId: string, wcif: WCIF, apiResults: WcaApiResult[]): Certificate[] {
+  private getUnofficialCertificates(
+    unofficialId: string,
+    wcif: WCIF,
+    unofficialPodiums: Record<string, UnofficialPodiumState>
+  ): Certificate[] {
     const definition = getUnofficialCertificateDefinition(unofficialId);
     if (!definition) {
       return [];
     }
 
-    const format = definition.getSourceFormat(apiResults);
-    if (!format || !definition.hasSourceResults(apiResults)) {
+    const state = unofficialPodiums[unofficialId];
+    if (!state?.hasSource || !state.format) {
       return this.getBlankPodiumCertificates(wcif, definition.eventIdForFormat, definition.certificateEventName);
     }
 
-    const podiumPlaces = getUnofficialPodium(unofficialId, wcif, apiResults, this.countries);
-    if (!podiumPlaces.length) {
+    if (!state.podium.length) {
       return this.getBlankPodiumCertificates(wcif, definition.eventIdForFormat, definition.certificateEventName);
     }
 
-    return podiumPlaces.map(result =>
+    return state.podium.map(result =>
       this.getNewCertificate(
         wcif,
         definition.eventIdForFormat,
-        format,
+        state.format!,
         result,
         definition.certificateEventName
       )

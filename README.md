@@ -57,11 +57,13 @@ Originally forked from https://github.com/Goosly/wca-certificates
 bun install
 ```
 
-Regenerate the WCA API client after updating `openapi/wca.yaml`:
+Regenerate the WCA API client after updating `openapi/wca.yaml` (trimmed to the three endpoints this app uses):
 
 ```bash
 bun run generate-api
 ```
+
+CI verifies that committed generated client output matches the spec.
 
 ### Running Locally
 

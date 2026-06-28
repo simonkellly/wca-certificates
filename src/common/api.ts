@@ -4,7 +4,13 @@ import {Observable, forkJoin, from, of} from 'rxjs';
 import {map, catchError} from 'rxjs/operators';
 import {environment} from '../environments/environment';
 import {AuthService} from './auth';
-import {Competition, RawCompetition, CompetitionsApiResponse, WCIF} from './types';
+import {
+  Competition,
+  RawCompetition,
+  CompetitionsApiResponse,
+  WCIF,
+  WcaApiLoadOutcome,
+} from './types';
 import {configureWcaClient, client, getWcaAuthHeaders} from './wca-client';
 import {
   competitionPodiums,
@@ -13,6 +19,7 @@ import {
   type LiveRound,
   type Result as WcaApiResult,
 } from '../wca-api/openapiClient';
+import type {CompetitionApiSources} from './competition-certificate-data';
 
 @Injectable({
   providedIn: 'root'
@@ -57,14 +64,18 @@ export class ApiService {
     call: () => Promise<{data?: T}>,
     endpointName: string,
     emptyValue: T
-  ): Observable<T> {
+  ): Observable<WcaApiLoadOutcome<T>> {
     return from(call()).pipe(
-      map(response => response.data ?? emptyValue),
+      map(response => ({
+        data: response.data ?? emptyValue,
+        outcome: 'ok' as const,
+      })),
       catchError((error: {status?: number}) => {
-        if (error?.status !== 404) {
-          console.error(`WCA API ${endpointName} failed`, error);
+        if (error?.status === 404) {
+          return of({data: emptyValue, outcome: 'not_found' as const});
         }
-        return of(emptyValue);
+        console.error(`WCA API ${endpointName} failed`, error);
+        return of({data: emptyValue, outcome: 'error' as const});
       })
     );
   }
@@ -115,7 +126,16 @@ export class ApiService {
     );
   }
 
-  getLivePodiums(competitionId: string): Observable<LiveRound[]> {
+  loadCompetitionApiSources(competitionId: string): Observable<CompetitionApiSources> {
+    return forkJoin({
+      wcif: this.getWcif(competitionId),
+      livePodiums: this.getLivePodiums(competitionId),
+      publishedPodiums: this.getCompetitionPodiums(competitionId),
+      competitionResults: this.getCompetitionResults(competitionId),
+    });
+  }
+
+  getLivePodiums(competitionId: string): Observable<WcaApiLoadOutcome<LiveRound[]>> {
     return this.callWcaApi(
       () => livePodiums({client, path: {competitionId}}),
       `live/podiums for ${competitionId}`,
@@ -123,7 +143,7 @@ export class ApiService {
     );
   }
 
-  getCompetitionPodiums(competitionId: string): Observable<WcaApiResult[]> {
+  getCompetitionPodiums(competitionId: string): Observable<WcaApiLoadOutcome<WcaApiResult[]>> {
     return this.callWcaApi(
       () => competitionPodiums({client, path: {competitionId}}),
       `podiums for ${competitionId}`,
@@ -131,7 +151,7 @@ export class ApiService {
     );
   }
 
-  getResults(competitionId: string): Observable<WcaApiResult[]> {
+  getCompetitionResults(competitionId: string): Observable<WcaApiLoadOutcome<WcaApiResult[]>> {
     return this.callWcaApi(
       () => resultsByCompetition({client, path: {competitionId}}),
       `results for ${competitionId}`,

@@ -2,7 +2,7 @@ import {Event} from '@wca/helpers/lib/models/event';
 import {Result} from '@wca/helpers/lib/models/result';
 import {Person} from '@wca/helpers';
 import type {LiveRound, Result as WcaApiResult} from '../wca-api/openapiClient';
-import {compareByPrimaryTime, getPodiumWarning, podiumByFastestTime, podiumByRanking} from './podium';
+import {getPodiumWarning, podiumByRanking} from './podium';
 import {WCIF} from './types';
 
 export interface PodiumResult extends Result {
@@ -19,9 +19,6 @@ export interface EventPodiumFields {
 export type EventWithPodium = Event & EventPodiumFields & {
   printCertificate?: boolean;
 };
-
-/** @deprecated Use EventWithPodium */
-export type EventPodiumData = EventPodiumFields;
 
 export interface PersonIndex {
   resolveRegistrantId(wcaId: string, name: string): number;
@@ -54,9 +51,9 @@ export function buildPersonIndex(wcif: WCIF): PersonIndex {
   };
 }
 
-function mapAttempts(values: ({value: number} | number)[]): Result['attempts'] {
+function mapAttempts(values: number[]): Result['attempts'] {
   return values.map(attempt => ({
-    result: typeof attempt === 'number' ? attempt : attempt.value,
+    result: attempt,
     reconstruction: null,
   }));
 }
@@ -94,13 +91,13 @@ function mapLiveRoundResults(liveRound: LiveRound): PodiumResult[] {
         ranking: result.global_pos,
         best: result.best,
         average: result.average,
-        attempts: mapAttempts(result.attempts),
+        attempts: mapAttempts(result.attempts.map(attempt => attempt.value)),
         countryIso2: competitor?.country_iso2,
       });
     });
 }
 
-function mapWcaApiResults(
+export function mapApiResultsToPodiumResults(
   apiResults: WcaApiResult[],
   personIndex: PersonIndex
 ): PodiumResult[] {
@@ -123,7 +120,7 @@ function mapPublishedPodiumResults(
     .filter(result => result.event_id === eventId && result.best > 0 && result.pos > 0)
     .sort((a, b) => a.pos - b.pos);
 
-  return mapWcaApiResults(eventResults, personIndex);
+  return mapApiResultsToPodiumResults(eventResults, personIndex);
 }
 
 export function buildEventPodiumData(
@@ -185,15 +182,11 @@ export function filterPodiumResults(
   return results;
 }
 
-export function computePodiumPlaces(sourceResults: PodiumResult[]): PodiumResult[] {
-  return podiumByRanking(sourceResults) as PodiumResult[];
-}
-
 export function derivePodiumPlaces(
   podiumSourceResults: PodiumResult[],
   countriesFilter: string
 ): PodiumResult[] {
-  return computePodiumPlaces(filterPodiumResults(podiumSourceResults, countriesFilter));
+  return podiumByRanking(filterPodiumResults(podiumSourceResults, countriesFilter)) as PodiumResult[];
 }
 
 export function getEventPodiumWarning(
@@ -208,76 +201,4 @@ export function getEventPodiumWarning(
     derivePodiumPlaces(event.podiumSourceResults, countriesFilter).length,
     includeOverflowWarning
   );
-}
-
-function mergeBestApiResultsPerPerson(results: WcaApiResult[]): WcaApiResult[] {
-  const sorted = [...results].sort(compareByPrimaryTime);
-  const seenKeys = new Set<string>();
-  const merged: WcaApiResult[] = [];
-
-  for (const result of sorted) {
-    const key = result.wca_id || result.name;
-    if (seenKeys.has(key)) {
-      continue;
-    }
-    seenKeys.add(key);
-    merged.push(result);
-  }
-
-  return merged;
-}
-
-export interface Newcomer333RoundResults {
-  firstRound: WcaApiResult[];
-  secondRound: WcaApiResult[];
-  anyRound: WcaApiResult[];
-}
-
-export function selectNewcomer333RoundResults(apiResults: WcaApiResult[]): Newcomer333RoundResults {
-  const firstRound: WcaApiResult[] = [];
-  const secondRound: WcaApiResult[] = [];
-
-  for (const result of apiResults) {
-    if (result.event_id !== '333' || result.best <= 0) {
-      continue;
-    }
-    if (result.round_type_id === '1') {
-      firstRound.push(result);
-    } else if (result.round_type_id === '2') {
-      secondRound.push(result);
-    }
-  }
-
-  return {
-    firstRound,
-    secondRound,
-    anyRound: firstRound.concat(secondRound),
-  };
-}
-
-export function computeFastestNewcomer333Podium(
-  wcif: WCIF,
-  apiResults: WcaApiResult[],
-  countriesFilter: string
-): PodiumResult[] {
-  const personIndex = buildPersonIndex(wcif);
-  const {firstRound, secondRound} = selectNewcomer333RoundResults(apiResults);
-
-  const mergedApiResults = secondRound.length
-    ? mergeBestApiResultsPerPerson(firstRound.concat(secondRound))
-    : firstRound;
-
-  const newcomers = mapWcaApiResults(mergedApiResults, personIndex)
-    .filter(result => personIndex.isNewcomer(result.personId));
-
-  return podiumByFastestTime(filterPodiumResults(newcomers, countriesFilter)) as PodiumResult[];
-}
-
-export function hasFastestNewcomer333SourceResults(apiResults: WcaApiResult[]): boolean {
-  return selectNewcomer333RoundResults(apiResults).anyRound.length > 0;
-}
-
-export function getFastestNewcomer333Format(apiResults: WcaApiResult[]): string | null {
-  const {anyRound} = selectNewcomer333RoundResults(apiResults);
-  return anyRound[0]?.format_id ?? null;
 }

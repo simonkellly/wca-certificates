@@ -286,33 +286,36 @@ describe('ApiService', () => {
       );
 
       service.getLivePodiums('TestComp2024').subscribe(result => {
-        expect(result.length).toBe(1);
-      expect(result[0].id).toBe('333-r1');
+        expect(result.data.length).toBe(1);
+        expect(result.data[0].id).toBe('333-r1');
+        expect(result.outcome).toBe('ok');
         done();
       });
     });
 
-    it('should return empty array when live podiums request fails', (done) => {
+    it('should return error outcome when live podiums request fails', (done) => {
       spyOn(console, 'error');
       spyOn(wcaOpenApi, 'livePodiums').and.returnValue(
         Promise.reject({status: 500}) as ReturnType<typeof wcaOpenApi.livePodiums>
       );
 
       service.getLivePodiums('TestComp2024').subscribe(result => {
-        expect(result).toEqual([]);
+        expect(result.data).toEqual([]);
+        expect(result.outcome).toBe('error');
         expect(console.error).toHaveBeenCalled();
         done();
       });
     });
 
-    it('should return empty array for 404 without logging an error', (done) => {
+    it('should return not_found outcome for 404 without logging an error', (done) => {
       spyOn(console, 'error');
       spyOn(wcaOpenApi, 'competitionPodiums').and.returnValue(
         Promise.reject({status: 404}) as ReturnType<typeof wcaOpenApi.competitionPodiums>
       );
 
       service.getCompetitionPodiums('TestComp2024').subscribe(result => {
-        expect(result).toEqual([]);
+        expect(result.data).toEqual([]);
+        expect(result.outcome).toBe('not_found');
         expect(console.error).not.toHaveBeenCalled();
         done();
       });

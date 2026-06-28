@@ -1,11 +1,16 @@
 import {TestBed} from '@angular/core/testing';
-import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
+import {provideHttpClient} from '@angular/common/http';
 import {of} from 'rxjs';
 import {AppComponent, parseUrlParams, tabNameToIndex, tabIndexToName} from './app.component';
 import {PrintService} from '../common/print';
 import {WCIF, Competition} from '../common/types';
 import {EventWithPodium, filterPodiumResults, PodiumResult} from '../common/podium-data';
+import {
+  buildCompetitionCertificateData,
+  CompetitionApiSources,
+} from '../common/competition-certificate-data';
+import type {Result as WcaApiResult} from '../wca-api/openapiClient';
 import {Result} from '@wca/helpers/lib/models/result';
 import {Event} from '@wca/helpers/lib/models/event';
 import {Person} from '@wca/helpers';
@@ -54,6 +59,25 @@ function makeWcif(events: EventWithPodium[] = [], persons: Person[] = []): WCIF 
     competitorLimit: null,
     extensions: []
   };
+}
+
+function okApiData<T>(data: T) {
+  return {data, outcome: 'ok' as const};
+}
+
+function makeApiSources(wcif: WCIF, competitionResults: WcaApiResult[] = []): CompetitionApiSources {
+  return {
+    wcif,
+    livePodiums: okApiData([]),
+    publishedPodiums: okApiData([]),
+    competitionResults: okApiData(competitionResults),
+  };
+}
+
+function setCertificateData(component: AppComponent, wcif: WCIF, countries = '') {
+  component.certificateData = buildCompetitionCertificateData(makeApiSources(wcif), countries);
+  component.wcif = component.certificateData.wcif;
+  component.events = component.certificateData.wcif.events;
 }
 
 describe('AppComponent', () => {
@@ -110,8 +134,7 @@ describe('AppComponent', () => {
     beforeEach(() => {
       const event = makeEventWithPodium('333', [makeRound([])]);
       event.printCertificate = true;
-      component.events = [event];
-      component.wcif = makeWcif([event], [makePerson('Alice', 1)]);
+      setCertificateData(component, makeWcif([event], [makePerson('Alice', 1)]));
     });
 
     it('should print certificates for selected events', () => {
@@ -367,7 +390,7 @@ describe('AppComponent', () => {
         ...result,
         countryIso2: 'IE',
       }));
-      component.events = [event];
+      setCertificateData(component, makeWcif([event], []), mockPrintService.countries ?? '');
       component['recomputeWarnings']();
     }
 
@@ -615,10 +638,8 @@ describe('AppComponent', () => {
 
     describe('applyPendingNavigation', () => {
       it('should load competition from pending params', () => {
-        spyOn(component.apiService, 'getWcif').and.returnValue(of(makeWcif([makeEventWithPodium('333', [makeRound([])])], [makePerson('Alice', 1)])));
-        spyOn(component.apiService, 'getLivePodiums').and.returnValue(of([]));
-        spyOn(component.apiService, 'getCompetitionPodiums').and.returnValue(of([]));
-        spyOn(component.apiService, 'getResults').and.returnValue(of([]));
+        const wcif = makeWcif([makeEventWithPodium('333', [makeRound([])])], [makePerson('Alice', 1)]);
+        spyOn(component.apiService, 'loadCompetitionApiSources').and.returnValue(of(makeApiSources(wcif)));
         component.pendingNavigation = { competitionId: 'PendingComp', tabIndex: 1 };
 
         component.applyPendingNavigation();
@@ -626,7 +647,7 @@ describe('AppComponent', () => {
         expect(component.competitionId).toBe('PendingComp');
         expect(component.selectedTabIndex).toBe(1);
         expect(component.pendingNavigation).toBeNull();
-        expect(component.apiService.getWcif).toHaveBeenCalledWith('PendingComp');
+        expect(component.apiService.loadCompetitionApiSources).toHaveBeenCalledWith('PendingComp');
       });
 
       it('should not navigate when no pending competition', () => {
@@ -691,8 +712,7 @@ describe('AppComponent', () => {
 
     describe('handleCompetitionSelected', () => {
       beforeEach(() => {
-        spyOn(component.apiService, 'getWcif').and.returnValue(of(makeWcif()));
-        spyOn(component.apiService, 'getResults').and.returnValue(of([]));
+        spyOn(component.apiService, 'loadCompetitionApiSources').and.returnValue(of(makeApiSources(makeWcif())));
       });
 
       it('should update URL when competition is selected', () => {

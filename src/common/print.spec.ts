@@ -5,6 +5,7 @@ import {WCIF} from './types';
 import {getUnofficialCertificateDefinition, UNOFFICIAL_FASTEST_NEWCOMER_333_R1} from './unofficial-certificates';
 import {EventWithPodium} from './podium-data';
 import type {Result as WcaApiResult} from '../wca-api/openapiClient';
+import {buildCompetitionCertificateData, CompetitionCertificateData} from './competition-certificate-data';
 import {Person} from '@wca/helpers';
 import {Event} from '@wca/helpers/lib/models/event';
 import {Result} from '@wca/helpers/lib/models/result';
@@ -385,12 +386,24 @@ describe('PrintService', () => {
   });
 
   describe('getCertificates', () => {
+    function makeCertificateData(
+      wcif: WCIF,
+      apiResults: WcaApiResult[] = []
+    ): CompetitionCertificateData {
+      return buildCompetitionCertificateData({
+        wcif,
+        livePodiums: {data: [], outcome: 'ok'},
+        publishedPodiums: {data: [], outcome: 'ok'},
+        competitionResults: {data: apiResults, outcome: 'ok'},
+      }, '');
+    }
+
     function getCertificates(
       events: string[],
       wcif: WCIF,
       apiResults: WcaApiResult[] = []
     ): Certificate[] {
-      return service['getCertificates'](events, wcif, apiResults);
+      return service['getCertificates'](events, makeCertificateData(wcif, apiResults));
     }
 
     function makeApiResult(overrides: Partial<WcaApiResult>): WcaApiResult {
@@ -466,7 +479,8 @@ describe('PrintService', () => {
     it('should generate fastest newcomer certs with certificate event title', () => {
       const wcif = makeWcif([
         makePerson('Delegate One', 2, ['delegate']),
-        makePerson('Organizer One', 3, ['organizer'])
+        makePerson('Organizer One', 3, ['organizer']),
+        makePerson('New Person', 4, [])
       ]);
       wcif.events = [makeEvent('333')];
 

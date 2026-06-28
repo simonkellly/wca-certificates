@@ -1,28 +1,120 @@
 import {Result} from '@wca/helpers/lib/models/result';
 import type {Result as WcaApiResult} from '../wca-api/openapiClient';
-import {WCIF} from './types';
-import {getPodiumWarning} from './podium';
+import {LoadedWCIF, WCIF} from './types';
+import {compareByPrimaryTime, getPodiumWarning, podiumByFastestTime} from './podium';
 import {
-  computeFastestNewcomer333Podium,
-  getFastestNewcomer333Format,
-  hasFastestNewcomer333SourceResults,
+  buildPersonIndex,
+  filterPodiumResults,
+  mapApiResultsToPodiumResults,
+  PodiumResult,
 } from './podium-data';
 
 /** Internal id passed to PrintService with official event ids */
 export const UNOFFICIAL_FASTEST_NEWCOMER_333_R1 = 'unofficial:fastest-newcomer-333-r1';
+
+export interface UnofficialPodiumState {
+  hasSource: boolean;
+  format: string | null;
+  podium: Result[];
+}
 
 export interface UnofficialCertificateDefinition {
   id: string;
   label: string;
   eventIdForFormat: string;
   certificateEventName: string;
-  computePodium: (wcif: WCIF, apiResults: WcaApiResult[], countriesFilter: string) => Result[];
-  hasSourceResults: (apiResults: WcaApiResult[]) => boolean;
-  getSourceFormat: (apiResults: WcaApiResult[]) => string | null;
+  buildState: (
+    wcif: LoadedWCIF,
+    apiResults: WcaApiResult[],
+    countriesFilter: string
+  ) => UnofficialPodiumState;
 }
 
 export function isUnofficialCertificateId(id: string): boolean {
   return id.startsWith('unofficial:');
+}
+
+interface Newcomer333RoundResults {
+  firstRound: WcaApiResult[];
+  secondRound: WcaApiResult[];
+  anyRound: WcaApiResult[];
+}
+
+function selectNewcomer333RoundResults(apiResults: WcaApiResult[]): Newcomer333RoundResults {
+  const firstRound: WcaApiResult[] = [];
+  const secondRound: WcaApiResult[] = [];
+
+  for (const result of apiResults) {
+    if (result.event_id !== '333' || result.best <= 0) {
+      continue;
+    }
+    if (result.round_type_id === '1') {
+      firstRound.push(result);
+    } else if (result.round_type_id === '2') {
+      secondRound.push(result);
+    }
+  }
+
+  return {
+    firstRound,
+    secondRound,
+    anyRound: firstRound.concat(secondRound),
+  };
+}
+
+function mergeBestApiResultsPerPerson(results: WcaApiResult[]): WcaApiResult[] {
+  const sorted = [...results].sort(compareByPrimaryTime);
+  const seenKeys = new Set<string>();
+  const merged: WcaApiResult[] = [];
+
+  for (const result of sorted) {
+    const key = result.wca_id || result.name;
+    if (seenKeys.has(key)) {
+      continue;
+    }
+    seenKeys.add(key);
+    merged.push(result);
+  }
+
+  return merged;
+}
+
+function computeFastestNewcomer333Podium(
+  wcif: WCIF,
+  apiResults: WcaApiResult[],
+  countriesFilter: string
+): PodiumResult[] {
+  const personIndex = buildPersonIndex(wcif);
+  const {firstRound, secondRound} = selectNewcomer333RoundResults(apiResults);
+
+  const mergedApiResults = secondRound.length
+    ? mergeBestApiResultsPerPerson(firstRound.concat(secondRound))
+    : firstRound;
+
+  const newcomers = mapApiResultsToPodiumResults(mergedApiResults, personIndex)
+    .filter(result => personIndex.isNewcomer(result.personId));
+
+  return podiumByFastestTime(filterPodiumResults(newcomers, countriesFilter)) as PodiumResult[];
+}
+
+function buildFastestNewcomer333State(
+  wcif: LoadedWCIF,
+  apiResults: WcaApiResult[],
+  countriesFilter: string
+): UnofficialPodiumState {
+  const {anyRound} = selectNewcomer333RoundResults(apiResults);
+  const hasSource = anyRound.length > 0;
+  const format = anyRound[0]?.format_id ?? null;
+
+  if (!hasSource) {
+    return {hasSource: false, format: null, podium: []};
+  }
+
+  return {
+    hasSource: true,
+    format,
+    podium: computeFastestNewcomer333Podium(wcif, apiResults, countriesFilter),
+  };
 }
 
 export const UNOFFICIAL_CERTIFICATE_DEFINITIONS: readonly UnofficialCertificateDefinition[] = [
@@ -31,9 +123,7 @@ export const UNOFFICIAL_CERTIFICATE_DEFINITIONS: readonly UnofficialCertificateD
     label: 'Fastest Newcomer (First Round)',
     eventIdForFormat: '333',
     certificateEventName: '3x3x3 Newcomer',
-    computePodium: computeFastestNewcomer333Podium,
-    hasSourceResults: hasFastestNewcomer333SourceResults,
-    getSourceFormat: getFastestNewcomer333Format,
+    buildState: buildFastestNewcomer333State,
   },
 ] as const;
 
@@ -48,61 +138,25 @@ export function createUnofficialCertificateSelection(): Record<string, boolean> 
   }, {});
 }
 
-interface UnofficialPodiumState {
-  hasSource: boolean;
-  podium: Result[];
-}
-
-function getUnofficialPodiumState(
-  id: string,
-  wcif: WCIF | null,
+export function buildUnofficialPodiumStates(
+  wcif: LoadedWCIF,
   apiResults: WcaApiResult[],
   countriesFilter: string
-): UnofficialPodiumState {
-  const definition = getUnofficialCertificateDefinition(id);
-  if (!definition || !wcif) {
-    return {hasSource: false, podium: []};
-  }
-
-  const hasSource = definition.hasSourceResults(apiResults);
-  const podium = hasSource
-    ? definition.computePodium(wcif, apiResults, countriesFilter)
-    : [];
-
-  return {hasSource, podium};
+): Record<string, UnofficialPodiumState> {
+  return Object.fromEntries(
+    UNOFFICIAL_CERTIFICATE_DEFINITIONS.map(definition => [
+      definition.id,
+      definition.buildState(wcif, apiResults, countriesFilter),
+    ])
+  );
 }
 
-export function getUnofficialPodium(
-  id: string,
-  wcif: WCIF,
-  apiResults: WcaApiResult[],
-  countriesFilter: string
-): Result[] {
-  return getUnofficialPodiumState(id, wcif, apiResults, countriesFilter).podium;
+export function getUnofficialWarningFromState(state: UnofficialPodiumState): string {
+  return getPodiumWarning(state.podium.length);
 }
 
-export function getUnofficialWarning(
-  id: string,
-  wcif: WCIF | null,
-  apiResults: WcaApiResult[],
-  countriesFilter: string
-): string {
-  if (!wcif) {
-    return getPodiumWarning(0);
-  }
-  const {podium} = getUnofficialPodiumState(id, wcif, apiResults, countriesFilter);
-  return getPodiumWarning(podium.length);
-}
-
-export function shouldGenerateBlankUnofficialCertificates(
-  id: string,
-  wcif: WCIF | null,
-  apiResults: WcaApiResult[],
-  countriesFilter: string
+export function shouldGenerateBlankUnofficialCertificatesFromState(
+  state: UnofficialPodiumState
 ): boolean {
-  const {hasSource, podium} = getUnofficialPodiumState(id, wcif, apiResults, countriesFilter);
-  if (!wcif) {
-    return false;
-  }
-  return !hasSource || podium.length === 0;
+  return !state.hasSource || state.podium.length === 0;
 }

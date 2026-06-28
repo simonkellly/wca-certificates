@@ -1,14 +1,15 @@
 import {Person} from '@wca/helpers';
-import {WCIF} from './types';
+import {LoadedWCIF} from './types';
 import type {Result as WcaApiResult} from '../wca-api/openapiClient';
 import {
   UNOFFICIAL_CERTIFICATE_DEFINITIONS,
+  buildUnofficialPodiumStates,
   createUnofficialCertificateSelection,
-  getUnofficialPodium,
 } from './unofficial-certificates';
 import {getPodiumWarning, podiumByFastestTime} from './podium';
 import {Result} from '@wca/helpers/lib/models/result';
 import {Event} from '@wca/helpers/lib/models/event';
+import {EventWithPodium} from './podium-data';
 
 function makeResult(overrides: Partial<Result> & {best?: number; average?: number} = {}): Result {
   return {
@@ -52,13 +53,20 @@ function makePerson(
   return {name, registrantId, wcaId, countryIso2, roles: [], registration: {status: 'accepted'}} as Person;
 }
 
-function makeWcif(events: Event[], persons: Person[]): WCIF {
+function makeLoadedWcif(events: Event[], persons: Person[]): LoadedWCIF {
+  const eventWithPodium = events.map(event => ({
+    ...event,
+    hasPodiumResults: false,
+    podiumFormat: null,
+    podiumSourceResults: [],
+  })) as EventWithPodium[];
+
   return {
     id: 'Test2024',
     name: 'Test Competition 2024',
     shortName: 'Test 2024',
     persons,
-    events,
+    events: eventWithPodium,
     schedule: {},
     competitorLimit: null,
     extensions: []
@@ -79,21 +87,23 @@ describe('unofficial-certificates', () => {
     });
   });
 
-  describe('getUnofficialPodium', () => {
+  describe('buildUnofficialPodiumStates', () => {
     it('should only include registrants without a WCA ID', () => {
       const persons = [
         makePerson('Old', 1, '2010OLD01'),
         makePerson('New', 2, null)
       ];
-      const wcif = makeWcif([{id: '333', rounds: []} as Event], persons);
+      const wcif = makeLoadedWcif([{id: '333', rounds: []} as Event], persons);
       const apiResults = [
         makeApiResult({name: 'Old', wca_id: '2010OLD01', best: 700, average: 800, pos: 1}),
         makeApiResult({name: 'New', wca_id: '', best: 600, average: 700, pos: 2})
       ];
 
-      const podium = getUnofficialPodium(UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id, wcif, apiResults, '');
-      expect(podium.length).toBe(1);
-      expect(podium[0].best).toBe(600);
+      const states = buildUnofficialPodiumStates(wcif, apiResults, '');
+      const state = states[UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id];
+      expect(state.podium.length).toBe(1);
+      expect(state.podium[0].best).toBe(600);
+      expect(state.format).toBe('a');
     });
 
     it('should respect countries filter', () => {
@@ -101,15 +111,32 @@ describe('unofficial-certificates', () => {
         makePerson('IE', 1, null, 'IE'),
         makePerson('US', 2, null, 'US')
       ];
-      const wcif = makeWcif([{id: '333', rounds: []} as Event], persons);
+      const wcif = makeLoadedWcif([{id: '333', rounds: []} as Event], persons);
       const apiResults = [
         makeApiResult({name: 'IE', country_iso2: 'IE', best: 800, average: 900, pos: 1}),
         makeApiResult({name: 'US', country_iso2: 'US', best: 900, average: 1000, pos: 2})
       ];
 
-      const podium = getUnofficialPodium(UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id, wcif, apiResults, 'IE');
-      expect(podium.length).toBe(1);
-      expect((podium[0] as {countryIso2?: string}).countryIso2).toBe('IE');
+      const states = buildUnofficialPodiumStates(wcif, apiResults, 'IE');
+      const state = states[UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id];
+      expect(state.podium.length).toBe(1);
+      expect((state.podium[0] as {countryIso2?: string}).countryIso2).toBe('IE');
+    });
+
+    it('should merge best results across first and second rounds', () => {
+      const wcif = makeLoadedWcif([{id: '333', rounds: []} as Event], [
+        makePerson('Old', 1, '2010OLD01'),
+        makePerson('New', 2, null)
+      ]);
+
+      const apiResults = [
+        makeApiResult({name: 'Old', wca_id: '2010OLD01', best: 700, average: 800, pos: 1}),
+        makeApiResult({name: 'New', wca_id: '', best: 900, average: 1000, pos: 2, round_type_id: '1'}),
+        makeApiResult({name: 'New', wca_id: '', best: 850, average: 950, pos: 1, round_type_id: '2'})
+      ];
+
+      const states = buildUnofficialPodiumStates(wcif, apiResults, '');
+      expect(states[UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id].podium[0].average).toBe(950);
     });
   });
 

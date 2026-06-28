@@ -8,21 +8,23 @@ import {AuthService} from '../common/auth';
 import {TemplateExtensionService} from '../common/template-extension';
 import { environment } from '../environments/environment';
 import { Competition, WCIF } from '../common/types';
-import type {Result as WcaApiResult} from '../wca-api/openapiClient';
 import { CertificateEditorComponent } from './certificate-editor/certificate-editor.component';
 import {
   UNOFFICIAL_CERTIFICATE_DEFINITIONS,
   createUnofficialCertificateSelection,
-  getUnofficialWarning as getUnofficialCertificateWarning,
-  shouldGenerateBlankUnofficialCertificates
 } from '../common/unofficial-certificates';
 import {
-  applyPodiumDataToEvents,
   EventWithPodium,
-  getEventPodiumWarning,
 } from '../common/podium-data';
-import {forkJoin} from 'rxjs';
-import type {LiveRound} from '../wca-api/openapiClient';
+import {
+  applyCountriesFilter,
+  buildCompetitionCertificateData,
+  CompetitionApiSources,
+  CompetitionCertificateData,
+  computeEventWarnings,
+  computeUnofficialWarnings,
+  shouldGenerateBlankUnofficialCertificates,
+} from '../common/competition-certificate-data';
 
 /** Parse competition and tab from URL search params */
 export function parseUrlParams(search: string): { competitionId: string | null; tab: string | null } {
@@ -63,7 +65,7 @@ export class AppComponent {
   customCompetitionId: string;
   events: EventWithPodium[] = [];
   wcif: WCIF | null = null;
-  competitionResults: WcaApiResult[] = [];
+  certificateData: CompetitionCertificateData | null = null;
   eventWarnings: Record<string, string> = {};
   unofficialWarnings: Record<string, string> = {};
   error: string;
@@ -193,51 +195,51 @@ export class AppComponent {
 
   private loadWcif() {
     this.loading = true;
-    forkJoin({
-      wcif: this.apiService.getWcif(this.competitionId),
-      livePodiums: this.apiService.getLivePodiums(this.competitionId),
-      publishedPodiums: this.apiService.getCompetitionPodiums(this.competitionId),
-      results: this.apiService.getResults(this.competitionId),
-    }).subscribe(({wcif, livePodiums, publishedPodiums, results}) => {
-      this.wcif = wcif;
-      this.competitionResults = results;
-      this.processWcifResults(wcif, livePodiums, publishedPodiums);
-    }, (error: { error?: { error?: string }; message?: string }) => {
-      this.loading = false;
-      this.error = error?.error?.error || error?.message || 'Failed to load competition data';
+    this.apiService.loadCompetitionApiSources(this.competitionId).subscribe({
+      next: (sources) => {
+        this.processCompetitionSources(sources);
+      },
+      error: (error: { error?: { error?: string }; message?: string }) => {
+        this.loading = false;
+        this.error = error?.error?.error || error?.message || 'Failed to load competition data';
+      },
     });
   }
 
-  private processWcifResults(
-    wcif: WCIF,
-    livePodiums: LiveRound[],
-    publishedPodiums: WcaApiResult[]
-  ) {
+  private processCompetitionSources(sources: CompetitionApiSources) {
     this.loading = false;
     try {
-      this.events = applyPodiumDataToEvents(wcif, livePodiums, publishedPodiums);
-      wcif.events = this.events;
-      this.recomputeWarnings();
+      this.certificateData = buildCompetitionCertificateData(
+        sources,
+        this.printService.countries
+      );
+      this.wcif = this.certificateData.wcif;
+      this.events = this.certificateData.wcif.events;
+
+      if (this.certificateData.apiLoadErrors.length) {
+        console.warn('Some competition data failed to load:', this.certificateData.apiLoadErrors);
+      }
 
       this.state = 'PRINT';
-
-      // Auto-load template if one is saved in the WCIF
       this.autoLoadTemplate();
       this.recomputeWarnings();
     } catch (error) {
       this.loading = false;
       console.error(error);
       this.wcif = null;
+      this.certificateData = null;
       this.competitionId = null;
     }
   }
 
   printCertificatesAsPdf() {
-    this.printService.printCertificatesAsPdf(this.wcif, this.getSelectedCertificateIds(), this.competitionResults);
+    if (!this.certificateData) return;
+    this.printService.printCertificatesAsPdf(this.certificateData, this.getSelectedCertificateIds());
   }
 
   printCertificatesAsPreview() {
-    this.printService.printCertificatesAsPreview(this.wcif, this.getSelectedCertificateIds(), this.competitionResults);
+    if (!this.certificateData) return;
+    this.printService.printCertificatesAsPreview(this.certificateData, this.getSelectedCertificateIds());
   }
 
   private getSelectedCertificateIds(): string[] {
@@ -249,28 +251,21 @@ export class AppComponent {
   }
 
   onCountriesFilterChange(): void {
+    if (!this.certificateData) return;
+    this.certificateData = applyCountriesFilter(this.certificateData, this.printService.countries);
     this.recomputeWarnings();
   }
 
   private recomputeWarnings(): void {
+    if (!this.certificateData) {
+      this.eventWarnings = {};
+      this.unofficialWarnings = {};
+      return;
+    }
+
     const countriesFilter = this.printService.countries;
-    this.eventWarnings = Object.fromEntries(
-      this.events.map(event => [
-        event.id,
-        getEventPodiumWarning(event, countriesFilter, true),
-      ])
-    );
-    this.unofficialWarnings = Object.fromEntries(
-      this.unofficialCertificateRows.map(row => [
-        row.id,
-        getUnofficialCertificateWarning(
-          row.id,
-          this.wcif,
-          this.competitionResults,
-          countriesFilter
-        ),
-      ])
-    );
+    this.eventWarnings = computeEventWarnings(this.certificateData.wcif.events, countriesFilter);
+    this.unofficialWarnings = computeUnofficialWarnings(this.certificateData.unofficialPodiums);
   }
 
   getWarningIfAny(eventId: string): string {
@@ -299,17 +294,12 @@ export class AppComponent {
     )) {
       return true;
     }
-    if (!this.wcif) {
+    if (!this.certificateData) {
       return false;
     }
     return this.unofficialCertificateRows.some(row =>
       this.unofficialCertificatePrint[row.id] &&
-      shouldGenerateBlankUnofficialCertificates(
-        row.id,
-        this.wcif,
-        this.competitionResults,
-        this.printService.countries
-      )
+      shouldGenerateBlankUnofficialCertificates(row.id, this.certificateData.unofficialPodiums)
     );
   }
 
@@ -358,6 +348,7 @@ export class AppComponent {
     this.authService.logout();
     this.competitionId = '';
     this.wcif = null;
+    this.certificateData = null;
     this.events = [];
     this.eventWarnings = {};
     this.unofficialWarnings = {};
@@ -400,6 +391,12 @@ export class AppComponent {
             this.showTemplateMessage('Template loaded successfully.', 'success');
           } else {
             this.showTemplateMessage('No saved template found for this competition.', 'info');
+          }
+          if (this.certificateData) {
+            this.certificateData = applyCountriesFilter(
+              this.certificateData,
+              this.printService.countries
+            );
           }
           this.recomputeWarnings();
         }

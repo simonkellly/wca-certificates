@@ -1,4 +1,5 @@
 import { Event, Person } from '@wca/helpers';
+import type {EventWithPodium} from './podium-data';
 
 /**
  * WCIF Extension
@@ -70,6 +71,16 @@ export interface WCIF {
   schedule: unknown;
   competitorLimit: number | null;
   extensions: WcifExtension[];
+}
+
+/** WCIF after official podium data has been attached to events */
+export interface LoadedWCIF extends Omit<WCIF, 'events'> {
+  events: EventWithPodium[];
+}
+
+export interface WcaApiLoadOutcome<T> {
+  data: T;
+  outcome: 'ok' | 'not_found' | 'error';
 }
 
 /**

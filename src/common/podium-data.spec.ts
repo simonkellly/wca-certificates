@@ -6,7 +6,6 @@ import {
   applyPodiumDataToEvents,
   buildEventPodiumData,
   buildPersonIndex,
-  computeFastestNewcomer333Podium,
   derivePodiumPlaces,
   filterPodiumResults,
   getEventPodiumWarning,
@@ -128,38 +127,6 @@ describe('podium-data', () => {
 
     expect(podiumData.hasPodiumResults).toBeTrue();
     expect(podiumData.podiumSourceResults[0].personId).toBe(2);
-  });
-
-  it('should compute fastest newcomer from merged first-round results', () => {
-    const wcif = makeWcif([{id: '333', rounds: []} as Event], [
-      makePerson('Old', 1, '2010OLD01'),
-      makePerson('New', 2, null)
-    ]);
-
-    const apiResults: WcaApiResult[] = [
-      {
-        id: 1, pos: 1, best: 700, average: 800, name: 'Old', country_iso2: 'IE',
-        competition_id: 'Test2024', event_id: '333', round_type_id: '1', format_id: 'a',
-        wca_id: '2010OLD01', attempts: [800], best_index: 0, worst_index: 0,
-        regional_single_record: null, regional_average_record: null
-      },
-      {
-        id: 2, pos: 2, best: 900, average: 1000, name: 'New', country_iso2: 'IE',
-        competition_id: 'Test2024', event_id: '333', round_type_id: '1', format_id: 'a',
-        wca_id: '', attempts: [1000], best_index: 0, worst_index: 0,
-        regional_single_record: null, regional_average_record: null
-      },
-      {
-        id: 3, pos: 1, best: 850, average: 950, name: 'New', country_iso2: 'IE',
-        competition_id: 'Test2024', event_id: '333', round_type_id: '2', format_id: 'a',
-        wca_id: '', attempts: [950], best_index: 0, worst_index: 0,
-        regional_single_record: null, regional_average_record: null
-      }
-    ];
-
-    const podium = computeFastestNewcomer333Podium(wcif, apiResults, '');
-    expect(podium.length).toBe(1);
-    expect(podium[0].average).toBe(950);
   });
 
   it('should attach podium data to wcif events immutably', () => {
