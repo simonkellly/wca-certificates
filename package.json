@@ -30,8 +30,8 @@
     "deploy": "gh-pages -d dist/wca-certificates",
     "cy:open": "cypress open",
     "cy:run": "cypress run",
-    "e2e": "start-server-and-test start http://localhost:4200 cy:run",
-    "e2e:open": "start-server-and-test start http://localhost:4200 cy:open",
+    "e2e": "start-server-and-test 'bun run start' http://localhost:4200 'bun run cy:run'",
+    "e2e:open": "start-server-and-test 'bun run start' http://localhost:4200 'bun run cy:open'",
     "test": "ng test --no-watch",
     "lint": "ng lint",
     "generate-api": "openapi-ts"

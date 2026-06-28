@@ -42,44 +42,31 @@ Originally forked from https://github.com/Goosly/wca-certificates
 - **Angular Material** for UI components
 - **PDFMake** for client-side PDF generation
 - **@wca/helpers** for WCA data models
+- **@hey-api/openapi-ts** for WCA API client generation
+- **Bun** for package management and scripts
 
 ## Development
 
 ### Prerequisites
-- Node.js 20.x or 22.x (Angular 19 requires Node 18.19.1+)
-- Angular CLI 19.x
-
-### Setting up Node.js with nvm
-
-If you have a different version of Node.js installed, use [nvm](https://github.com/nvm-sh/nvm) to install and switch to Node 20:
-
-```bash
-# Install Node 20
-nvm install 20
-
-# Use Node 20 in current shell
-nvm use 20
-
-# Verify version
-node --version  # Should show v20.x.x
-```
-
-### Installing Angular CLI 19
-
-```bash
-npm install -g @angular/cli@19
-```
+- [Bun](https://bun.sh/) (recommended) or Node.js 20.x+
+- Angular CLI 19.x (via `bunx ng` or global install)
 
 ### Installation
 
 ```bash
-npm install
+bun install
+```
+
+Regenerate the WCA API client after updating `openapi/wca.yaml`:
+
+```bash
+bun run generate-api
 ```
 
 ### Running Locally
 
 ```bash
-ng serve
+bun run start
 ```
 
 Navigate to http://localhost:4200/
@@ -87,13 +74,13 @@ Navigate to http://localhost:4200/
 ### Linting
 
 ```bash
-npm run lint
+bun run lint
 ```
 
 ### Unit Testing (Karma/Jasmine)
 
 ```bash
-npm test
+bun run test
 ```
 
 Runs unit tests in headless Chrome. Spec files live alongside their source files (`*.spec.ts`).
@@ -105,16 +92,16 @@ The project uses [Cypress](https://www.cypress.io/) for end-to-end testing.
 
 ```bash
 # Run E2E tests (starts server automatically and runs tests headlessly)
-npm run e2e
+bun run e2e
 
 # Run E2E tests with Cypress UI (interactive mode)
-npm run e2e:open
+bun run e2e:open
 
 # Run Cypress tests only (requires server running on localhost:4200)
-npm run cy:run
+bun run cy:run
 
 # Open Cypress UI only (requires server running on localhost:4200)
-npm run cy:open
+bun run cy:open
 ```
 
 The E2E test suite covers:
@@ -124,14 +111,14 @@ The E2E test suite covers:
 - Certificate customization options
 - Template save/load via WCIF extensions
 - Tab navigation and error handling
-- Results API fallback when WCIF has no results
+- WCA API integration when WCIF has no embedded results
 
 ## Build & Deploy
 
 To build for production:
 
 ```bash
-npm run build-prod
+bun run build-prod
 ```
 
 ### Testing the Production Build Locally
@@ -140,10 +127,10 @@ The production build can behave differently from `ng serve` due to optimizations
 
 ```bash
 # Build without the GitHub Pages base-href
-ng build -c=production
+bun run ng build -c=production
 
 # Serve locally
-npx serve dist/wca-certificates -s
+bunx serve dist/wca-certificates -s
 ```
 
 Then open http://localhost:3000 to test the production bundle.
@@ -155,8 +142,8 @@ Then open http://localhost:3000 to test the production bundle.
 **Manual fallback:** For quick rollbacks or emergency fixes, you can still deploy manually:
 
 ```bash
-npm run build-prod
-npm run deploy
+bun run build-prod
+bun run deploy
 ```
 
 This pushes the `dist/wca-certificates` directory to the `gh-pages` branch.
@@ -173,5 +160,7 @@ If the WCA OAuth app only has the production GitHub Pages URL registered, the po
 
 ## Data Sources
 
-- **Competition data:** Fetched from WCA API and [speedcubing-ireland/wca-analysis](https://github.com/speedcubing-ireland/wca-analysis)
-- **Results data:** Fetched from the official WCA WCIF API
+- **Competition list:** [speedcubing-ireland/wca-analysis](https://github.com/speedcubing-ireland/wca-analysis)
+- **WCIF:** `GET /api/v0/competitions/{id}/wcif/` (event list, persons, templates)
+- **Podium results:** `GET /api/v1/competitions/{id}/live/podiums` (primary), with fallback to `GET /api/v0/competitions/{id}/podiums`
+- **Newcomer certificates:** `GET /api/v0/competitions/{id}/results` (first-round 3x3x3 results)

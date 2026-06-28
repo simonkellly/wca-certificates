@@ -3,6 +3,8 @@ import {PrintService, DEFAULT_CERTIFICATE_JSON} from './print';
 import {Certificate} from './certificate';
 import {WCIF} from './types';
 import {getUnofficialCertificateDefinition, UNOFFICIAL_FASTEST_NEWCOMER_333_R1} from './unofficial-certificates';
+import {EventWithPodium} from './podium-data';
+import type {Result as WcaApiResult} from '../wca-api/openapiClient';
 import {Person} from '@wca/helpers';
 import {Event} from '@wca/helpers/lib/models/event';
 import {Result} from '@wca/helpers/lib/models/result';
@@ -383,8 +385,34 @@ describe('PrintService', () => {
   });
 
   describe('getCertificates', () => {
-    function getCertificates(events: string[], wcif: WCIF): Certificate[] {
-      return service['getCertificates'](events, wcif);
+    function getCertificates(
+      events: string[],
+      wcif: WCIF,
+      apiResults: WcaApiResult[] = []
+    ): Certificate[] {
+      return service['getCertificates'](events, wcif, apiResults);
+    }
+
+    function makeApiResult(overrides: Partial<WcaApiResult>): WcaApiResult {
+      return {
+        id: 1,
+        pos: 1,
+        best: 800,
+        average: 900,
+        name: 'New Person',
+        country_iso2: 'IE',
+        competition_id: 'Test2024',
+        event_id: '333',
+        round_type_id: '1',
+        format_id: 'a',
+        wca_id: '',
+        attempts: [900],
+        best_index: 0,
+        worst_index: 0,
+        regional_single_record: null,
+        regional_average_record: null,
+        ...overrides
+      };
     }
 
     it('should generate blank certificates when final round has no results', () => {
@@ -423,8 +451,10 @@ describe('PrintService', () => {
         makePerson('Delegate One', 1, ['delegate']),
         makePerson('Organizer One', 2, ['organizer'])
       ]);
-      const event = makeEvent('333');
-      event.rounds[0].results = [makeResult({personId: 1, ranking: 1, best: 800})];
+      const event = makeEvent('333') as EventWithPodium;
+      event.hasPodiumResults = true;
+      event.podiumFormat = 'a';
+      event.podiumSourceResults = [makeResult({personId: 1, ranking: 1, best: 800})];
       wcif.events = [event];
 
       const certificates = getCertificates(['333'], wcif);
@@ -434,18 +464,16 @@ describe('PrintService', () => {
     });
 
     it('should generate fastest newcomer certs with certificate event title', () => {
-      const newcomer = {name: 'New Person', registrantId: 1, roles: [] as string[], wcaId: null} as Person;
       const wcif = makeWcif([
         makePerson('Delegate One', 2, ['delegate']),
-        makePerson('Organizer One', 3, ['organizer']),
-        newcomer
+        makePerson('Organizer One', 3, ['organizer'])
       ]);
-      const event = makeEvent('333');
-      const r = makeResult({personId: 1, ranking: 1, best: 1100, average: 1200});
-      event.rounds[0].results = [r];
-      wcif.events = [event];
+      wcif.events = [makeEvent('333')];
 
-      const certificates = getCertificates([UNOFFICIAL_FASTEST_NEWCOMER_333_R1], wcif);
+      const apiResults = [
+        makeApiResult({name: 'New Person', best: 1100, average: 1200, wca_id: ''})
+      ];
+      const certificates = getCertificates([UNOFFICIAL_FASTEST_NEWCOMER_333_R1], wcif, apiResults);
       const definition = getUnofficialCertificateDefinition(UNOFFICIAL_FASTEST_NEWCOMER_333_R1);
 
       expect(certificates.length).toBe(1);

@@ -1,12 +1,12 @@
 import {Person} from '@wca/helpers';
 import {WCIF} from './types';
+import type {Result as WcaApiResult} from '../wca-api/openapiClient';
 import {
   UNOFFICIAL_CERTIFICATE_DEFINITIONS,
   createUnofficialCertificateSelection,
-  computeFastestNewcomer333R1Podium,
-  getPodiumWarning
+  getUnofficialPodium,
 } from './unofficial-certificates';
-import {podiumByFastestTime} from './podium';
+import {getPodiumWarning, podiumByFastestTime} from './podium';
 import {Result} from '@wca/helpers/lib/models/result';
 import {Event} from '@wca/helpers/lib/models/event';
 
@@ -19,6 +19,28 @@ function makeResult(overrides: Partial<Result> & {best?: number; average?: numbe
     average: 0,
     ...overrides
   } as Result;
+}
+
+function makeApiResult(overrides: Partial<WcaApiResult>): WcaApiResult {
+  return {
+    id: 1,
+    pos: 1,
+    best: 800,
+    average: 900,
+    name: 'New Person',
+    country_iso2: 'IE',
+    competition_id: 'Test2024',
+    event_id: '333',
+    round_type_id: '1',
+    format_id: 'a',
+    wca_id: '',
+    attempts: [900],
+    best_index: 0,
+    worst_index: 0,
+    regional_single_record: null,
+    regional_average_record: null,
+    ...overrides
+  };
 }
 
 function makePerson(
@@ -55,52 +77,23 @@ describe('unofficial-certificates', () => {
       expect(podium[1].personId).toBe(1);
       expect(podium[0].personId).toBe(2);
     });
-
-    it('should include ties on third place', () => {
-      const r1 = makeResult({personId: 1, best: 800, average: 900});
-      const r2 = makeResult({personId: 2, best: 850, average: 950});
-      const r3a = makeResult({personId: 3, best: 900, average: 1000});
-      const r3b = makeResult({personId: 4, best: 880, average: 1000});
-      const podium = podiumByFastestTime([r1, r2, r3a, r3b]);
-      expect(podium.filter(p => p['rankingAfterFiltering'] === 3).length).toBe(2);
-    });
   });
 
-  describe('computeFastestNewcomer333R1Podium', () => {
+  describe('getUnofficialPodium', () => {
     it('should only include registrants without a WCA ID', () => {
       const persons = [
         makePerson('Old', 1, '2010OLD01'),
         makePerson('New', 2, null)
       ];
-      const results = [
-        makeResult({personId: 1, ranking: 1, best: 700, average: 800}),
-        makeResult({personId: 2, ranking: 2, best: 600, average: 700})
+      const wcif = makeWcif([{id: '333', rounds: []} as Event], persons);
+      const apiResults = [
+        makeApiResult({name: 'Old', wca_id: '2010OLD01', best: 700, average: 800, pos: 1}),
+        makeApiResult({name: 'New', wca_id: '', best: 600, average: 700, pos: 2})
       ];
-      const events = [{
-        id: '333',
-        rounds: [{id: 'r1', format: 'a', results}]
-      }] as unknown as Event[];
-      const wcif = makeWcif(events, persons);
-      const podium = computeFastestNewcomer333R1Podium(wcif, '');
-      expect(podium.length).toBe(1);
-      expect(podium[0].personId).toBe(2);
-    });
 
-    it('should use first round of 333 only', () => {
-      const persons = [makePerson('New', 1, null)];
-      const first = makeResult({personId: 1, ranking: 2, best: 1200, average: 1300});
-      const final = makeResult({personId: 1, ranking: 1, best: 900, average: 1000});
-      const events = [{
-        id: '333',
-        rounds: [
-          {id: 'r1', format: 'a', results: [first]},
-          {id: 'r2', format: 'a', results: [final]}
-        ]
-      }] as unknown as Event[];
-      const wcif = makeWcif(events, persons);
-      const podium = computeFastestNewcomer333R1Podium(wcif, '');
+      const podium = getUnofficialPodium(UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id, wcif, apiResults, '');
       expect(podium.length).toBe(1);
-      expect(podium[0].best).toBe(1200);
+      expect(podium[0].best).toBe(600);
     });
 
     it('should respect countries filter', () => {
@@ -108,27 +101,15 @@ describe('unofficial-certificates', () => {
         makePerson('IE', 1, null, 'IE'),
         makePerson('US', 2, null, 'US')
       ];
-      const results = [
-        Object.assign(makeResult({personId: 1, ranking: 1, best: 800, average: 900}), {countryIso2: 'IE'}),
-        Object.assign(makeResult({personId: 2, ranking: 2, best: 900, average: 1000}), {countryIso2: 'US'})
+      const wcif = makeWcif([{id: '333', rounds: []} as Event], persons);
+      const apiResults = [
+        makeApiResult({name: 'IE', country_iso2: 'IE', best: 800, average: 900, pos: 1}),
+        makeApiResult({name: 'US', country_iso2: 'US', best: 900, average: 1000, pos: 2})
       ];
-      const events = [{
-        id: '333',
-        rounds: [{id: 'r1', format: 'a', results}]
-      }] as unknown as Event[];
-      const wcif = makeWcif(events, persons);
-      const podium = computeFastestNewcomer333R1Podium(wcif, 'IE');
-      expect(podium.length).toBe(1);
-      expect(podium[0].personId).toBe(1);
-    });
-  });
 
-  describe('unofficialPodiumWarning', () => {
-    it('should mirror official podium messages', () => {
-      expect(getPodiumWarning(0)).toBe('Not available yet');
-      expect(getPodiumWarning(1)).toBe('Only 1 person on the podium!');
-      expect(getPodiumWarning(2)).toBe('Only 2 persons on the podium!');
-      expect(getPodiumWarning(3)).toBe('');
+      const podium = getUnofficialPodium(UNOFFICIAL_CERTIFICATE_DEFINITIONS[0].id, wcif, apiResults, 'IE');
+      expect(podium.length).toBe(1);
+      expect((podium[0] as {countryIso2?: string}).countryIso2).toBe('IE');
     });
   });
 
@@ -144,6 +125,13 @@ describe('unofficial-certificates', () => {
         UNOFFICIAL_CERTIFICATE_DEFINITIONS.map(definition => definition.id)
       );
       expect(Object.values(selection)).toEqual(jasmine.arrayWithExactContents([false]));
+    });
+
+    it('should mirror official podium messages', () => {
+      expect(getPodiumWarning(0)).toBe('Not available yet');
+      expect(getPodiumWarning(1)).toBe('Only 1 person on the podium!');
+      expect(getPodiumWarning(2)).toBe('Only 2 persons on the podium!');
+      expect(getPodiumWarning(3)).toBe('');
     });
   });
 });

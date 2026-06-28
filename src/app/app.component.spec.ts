@@ -4,7 +4,8 @@ import {HttpTestingController, provideHttpClientTesting} from '@angular/common/h
 import {of} from 'rxjs';
 import {AppComponent, parseUrlParams, tabNameToIndex, tabIndexToName} from './app.component';
 import {PrintService} from '../common/print';
-import {WCIF, WcaApiResult, Competition} from '../common/types';
+import {WCIF, Competition} from '../common/types';
+import {EventWithPodium, filterPodiumResults, PodiumResult} from '../common/podium-data';
 import {Result} from '@wca/helpers/lib/models/result';
 import {Event} from '@wca/helpers/lib/models/event';
 import {Person} from '@wca/helpers';
@@ -33,7 +34,16 @@ function makePerson(name: string, registrantId: number, countryIso2 = 'IE'): Per
   return {name, registrantId, countryIso2, roles: [], registration: {status: 'accepted'}} as unknown as Person;
 }
 
-function makeWcif(events: Event[] = [], persons: Person[] = []): WCIF {
+function makeEventWithPodium(id: string, rounds: ReturnType<typeof makeRound>[]): EventWithPodium {
+  return {
+    ...makeEvent(id, rounds),
+    hasPodiumResults: false,
+    podiumFormat: null,
+    podiumSourceResults: [],
+  };
+}
+
+function makeWcif(events: EventWithPodium[] = [], persons: Person[] = []): WCIF {
   return {
     id: 'Test2024',
     name: 'Test Competition 2024',
@@ -43,29 +53,6 @@ function makeWcif(events: Event[] = [], persons: Person[] = []): WCIF {
     schedule: {},
     competitorLimit: null,
     extensions: []
-  };
-}
-
-function makeApiResult(overrides: Partial<WcaApiResult>): WcaApiResult {
-  return {
-    id: 1,
-    round_id: 1,
-    pos: 1,
-    best: 1000,
-    average: 1200,
-    name: 'Test Person',
-    country_iso2: 'IE',
-    competition_id: 'Test2024',
-    event_id: '333',
-    round_type_id: 'f',
-    format_id: 'a',
-    wca_id: null,
-    attempts: [1100, 1200, 1300, 1000, 1400],
-    best_index: 3,
-    worst_index: 4,
-    regional_single_record: null,
-    regional_average_record: null,
-    ...overrides
   };
 }
 
@@ -118,163 +105,11 @@ describe('AppComponent', () => {
     localStorage.clear();
   });
 
-  describe('mergeResultsIntoWcif', () => {
-    function mergeResults(wcif: WCIF, apiResults: WcaApiResult[]) {
-      component['mergeResultsIntoWcif'](wcif, apiResults);
-    }
-
-    it('should merge final round results into the last round of an event', () => {
-      const persons = [makePerson('Alice', 1), makePerson('Bob', 2)];
-      const events = [makeEvent('333', [makeRound([]), makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Alice', pos: 1, best: 800, average: 900, event_id: '333', round_type_id: 'f'}),
-        makeApiResult({name: 'Bob', pos: 2, best: 1000, average: 1100, event_id: '333', round_type_id: 'f'})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      // Last round (final) should have results
-      const finalRound = wcif.events[0].rounds[1];
-      expect(finalRound.results.length).toBe(2);
-      expect(finalRound.results[0].personId).toBe(1); // Alice
-      expect(finalRound.results[0].ranking).toBe(1);
-      expect(finalRound.results[0].best).toBe(800);
-      expect(finalRound.results[1].personId).toBe(2); // Bob
-    });
-
-    it('should merge combined final results using round_type_id "c"', () => {
-      const persons = [makePerson('Alice', 1)];
-      const events = [makeEvent('333', [makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: 'c'})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      expect(wcif.events[0].rounds[0].results.length).toBe(1);
-    });
-
-    it('should merge numeric round types for non-final rounds', () => {
-      const persons = [makePerson('Alice', 1)];
-      const events = [makeEvent('333', [makeRound([]), makeRound([]), makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: '1'}),
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: '2', best: 900}),
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: 'f', best: 800})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      expect(wcif.events[0].rounds[0].results.length).toBe(1);
-      expect(wcif.events[0].rounds[0].results[0].best).toBe(1000); // round 1
-      expect(wcif.events[0].rounds[1].results.length).toBe(1);
-      expect(wcif.events[0].rounds[1].results[0].best).toBe(900);  // round 2
-      expect(wcif.events[0].rounds[2].results.length).toBe(1);
-      expect(wcif.events[0].rounds[2].results[0].best).toBe(800);  // final
-    });
-
-    it('should merge combined first round using round_type_id "d"', () => {
-      const persons = [makePerson('Alice', 1)];
-      const events = [makeEvent('333', [makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: 'd'})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      // Single round should get results from combined first round
-      expect(wcif.events[0].rounds[0].results.length).toBe(1);
-    });
-
-    it('should map person names to registrantIds', () => {
-      const persons = [makePerson('Alice Smith', 1), makePerson('Bob Jones', 2)];
-      const events = [makeEvent('333', [makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Bob Jones', pos: 1, event_id: '333', round_type_id: 'f'})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      expect(wcif.events[0].rounds[0].results[0].personId).toBe(2);
-    });
-
-    it('should use personId 0 for unknown persons', () => {
-      const persons = [makePerson('Alice', 1)];
-      const events = [makeEvent('333', [makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Unknown Person', pos: 1, event_id: '333', round_type_id: 'f'})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      expect(wcif.events[0].rounds[0].results[0].personId).toBe(0);
-    });
-
-    it('should convert attempts to WCIF format', () => {
-      const persons = [makePerson('Alice', 1)];
-      const events = [makeEvent('333', [makeRound([])])];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: 'f', attempts: [1100, 1200, 1300]})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      const attempts = wcif.events[0].rounds[0].results[0].attempts;
-      expect(attempts.length).toBe(3);
-      expect(attempts[0]).toEqual({result: 1100, reconstruction: null});
-      expect(attempts[1]).toEqual({result: 1200, reconstruction: null});
-      expect(attempts[2]).toEqual({result: 1300, reconstruction: null});
-    });
-
-    it('should handle multiple events', () => {
-      const persons = [makePerson('Alice', 1)];
-      const events = [
-        makeEvent('333', [makeRound([])]),
-        makeEvent('222', [makeRound([])])
-      ];
-      const wcif = makeWcif(events, persons);
-
-      const apiResults = [
-        makeApiResult({name: 'Alice', pos: 1, event_id: '333', round_type_id: 'f', best: 800}),
-        makeApiResult({name: 'Alice', pos: 1, event_id: '222', round_type_id: 'f', best: 300})
-      ];
-
-      mergeResults(wcif, apiResults);
-
-      expect(wcif.events[0].rounds[0].results[0].best).toBe(800);
-      expect(wcif.events[1].rounds[0].results[0].best).toBe(300);
-    });
-
-    it('should not overwrite rounds when no matching API results exist', () => {
-      const existingResult = makeResult(1, 500, 600);
-      const events = [makeEvent('333', [makeRound([existingResult])])];
-      const wcif = makeWcif(events, []);
-
-      mergeResults(wcif, []);
-
-      expect(wcif.events[0].rounds[0].results.length).toBe(1);
-      expect(wcif.events[0].rounds[0].results[0].best).toBe(500);
-    });
-  });
 
   describe('printing actions', () => {
     beforeEach(() => {
-      const event = makeEvent('333', [makeRound([])]);
-      event['printCertificate'] = true;
+      const event = makeEventWithPodium('333', [makeRound([])]);
+      event.printCertificate = true;
       component.events = [event];
       component.wcif = makeWcif([event], [makePerson('Alice', 1)]);
     });
@@ -293,17 +128,20 @@ describe('AppComponent', () => {
   });
 
   describe('shouldShowBlankCertificatesNotice', () => {
-    it('should return true when a selected event has no final-round results', () => {
-      const noResultsEvent = makeEvent('333', [makeRound([])]);
-      noResultsEvent['printCertificate'] = true;
+    it('should return true when a selected event has no podium results', () => {
+      const noResultsEvent = makeEventWithPodium('333', [makeRound([])]);
+      noResultsEvent.hasPodiumResults = false;
+      noResultsEvent.printCertificate = true;
       component.events = [noResultsEvent];
 
       expect(component.shouldShowBlankCertificatesNotice()).toBeTrue();
     });
 
-    it('should return false when selected event has final-round results', () => {
-      const withResultsEvent = makeEvent('333', [makeRound([makeResult(1, 800)])]);
-      withResultsEvent['printCertificate'] = true;
+    it('should return false when selected event has podium results', () => {
+      const withResultsEvent = makeEventWithPodium('333', [makeRound([])]);
+      withResultsEvent.hasPodiumResults = true;
+      withResultsEvent.podiumSourceResults = [makeResult(1, 800)];
+      withResultsEvent.printCertificate = true;
       component.events = [withResultsEvent];
 
       expect(component.shouldShowBlankCertificatesNotice()).toBeFalse();
@@ -419,19 +257,17 @@ describe('AppComponent', () => {
     });
   });
 
-  describe('filterResultsWithOnlyDNF', () => {
-    function filterDNF(results: Result[]): Result[] {
-      return component['filterResultsWithOnlyDNF'](results);
+  describe('filterPodiumResults', () => {
+    function toPodiumResult(ranking: number, best: number, countryIso2 = 'IE'): PodiumResult {
+      return {ranking, best, average: 0, personId: 1, attempts: [], countryIso2};
     }
 
     it('should remove results with best of -1 (DNF)', () => {
-      const results = [
-        makeResult(1, 800),
-        makeResult(2, -1),  // DNF
-        makeResult(3, 1000)
-      ];
-
-      const filtered = filterDNF(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, 800),
+        toPodiumResult(2, -1),
+        toPodiumResult(3, 1000),
+      ], '');
 
       expect(filtered.length).toBe(2);
       expect(filtered[0].best).toBe(800);
@@ -439,75 +275,58 @@ describe('AppComponent', () => {
     });
 
     it('should remove results with best of 0', () => {
-      const results = [
-        makeResult(1, 800),
-        makeResult(2, 0)
-      ];
-
-      const filtered = filterDNF(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, 800),
+        toPodiumResult(2, 0),
+      ], '');
 
       expect(filtered.length).toBe(1);
     });
 
     it('should keep all results when none are DNF', () => {
-      const results = [
-        makeResult(1, 800),
-        makeResult(2, 900)
-      ];
-
-      const filtered = filterDNF(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, 800),
+        toPodiumResult(2, 900),
+      ], '');
 
       expect(filtered.length).toBe(2);
     });
 
     it('should return empty array when all are DNF', () => {
-      const results = [
-        makeResult(1, -1),
-        makeResult(2, -1)
-      ];
-
-      const filtered = filterDNF(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, -1),
+        toPodiumResult(2, -1),
+      ], '');
 
       expect(filtered.length).toBe(0);
     });
-  });
-
-  describe('filterResultsByCountry', () => {
-    function filterByCountry(results: Result[]): Result[] {
-      return component['filterResultsByCountry'](results);
-    }
 
     it('should return all results when no country filter is set', () => {
       mockPrintService.countries = '';
-      const r1 = makeResult(1, 800); r1['countryIso2'] = 'IE';
-      const r2 = makeResult(2, 900); r2['countryIso2'] = 'GB';
-      const results = [r1, r2];
-
-      const filtered = filterByCountry(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, 800, 'IE'),
+        toPodiumResult(2, 900, 'GB'),
+      ], '');
 
       expect(filtered.length).toBe(2);
     });
 
     it('should filter by single country', () => {
-      mockPrintService.countries = 'IE';
-      const r1 = makeResult(1, 800); r1['countryIso2'] = 'IE';
-      const r2 = makeResult(2, 900); r2['countryIso2'] = 'GB';
-      const results = [r1, r2];
-
-      const filtered = filterByCountry(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, 800, 'IE'),
+        toPodiumResult(2, 900, 'GB'),
+      ], 'IE');
 
       expect(filtered.length).toBe(1);
-      expect(filtered[0]['countryIso2']).toBe('IE');
+      expect(filtered[0].countryIso2).toBe('IE');
     });
 
     it('should filter by multiple countries separated by semicolon', () => {
-      mockPrintService.countries = 'IE;GB';
-      const r1 = makeResult(1, 800); r1['countryIso2'] = 'IE';
-      const r2 = makeResult(2, 900); r2['countryIso2'] = 'GB';
-      const r3 = makeResult(3, 1000); r3['countryIso2'] = 'US';
-      const results = [r1, r2, r3];
-
-      const filtered = filterByCountry(results);
+      const filtered = filterPodiumResults([
+        toPodiumResult(1, 800, 'IE'),
+        toPodiumResult(2, 900, 'GB'),
+        toPodiumResult(3, 1000, 'US'),
+      ], 'IE;GB');
 
       expect(filtered.length).toBe(2);
     });
@@ -540,18 +359,25 @@ describe('AppComponent', () => {
   });
 
   describe('getWarningIfAny', () => {
-    function setupEventWithResults(eventId: string, results: Result[]) {
-      const event = makeEvent(eventId, [makeRound(results)]);
+    function setupEventWithPodium(eventId: string, results: Result[]) {
+      const event = makeEventWithPodium(eventId, [makeRound([])]);
+      event.hasPodiumResults = results.some(result => result.best > 0);
+      event.podiumFormat = 'a';
+      event.podiumSourceResults = results.map(result => ({
+        ...result,
+        countryIso2: 'IE',
+      }));
       component.events = [event];
+      component['recomputeWarnings']();
     }
 
     it('should return "Not available yet" when no results', () => {
-      setupEventWithResults('333', []);
+      setupEventWithPodium('333', []);
       expect(component.getWarningIfAny('333')).toBe('Not available yet');
     });
 
     it('should return empty string for exactly 3 podium places', () => {
-      setupEventWithResults('333', [
+      setupEventWithPodium('333', [
         makeResult(1, 800),
         makeResult(2, 900),
         makeResult(3, 1000)
@@ -560,12 +386,12 @@ describe('AppComponent', () => {
     });
 
     it('should warn about only 1 person on podium', () => {
-      setupEventWithResults('333', [makeResult(1, 800)]);
+      setupEventWithPodium('333', [makeResult(1, 800)]);
       expect(component.getWarningIfAny('333')).toBe('Only 1 person on the podium!');
     });
 
     it('should warn about only 2 persons on podium', () => {
-      setupEventWithResults('333', [
+      setupEventWithPodium('333', [
         makeResult(1, 800),
         makeResult(2, 900)
       ]);
@@ -573,7 +399,7 @@ describe('AppComponent', () => {
     });
 
     it('should warn about more than 3 persons when ties exist', () => {
-      setupEventWithResults('333', [
+      setupEventWithPodium('333', [
         makeResult(1, 800),
         makeResult(2, 900),
         makeResult(3, 1000),
@@ -583,7 +409,7 @@ describe('AppComponent', () => {
     });
 
     it('should filter out DNF results before counting podium', () => {
-      setupEventWithResults('333', [
+      setupEventWithPodium('333', [
         makeResult(1, 800),
         makeResult(2, 900),
         makeResult(3, -1) // DNF
@@ -591,16 +417,14 @@ describe('AppComponent', () => {
       expect(component.getWarningIfAny('333')).toBe('Only 2 persons on the podium!');
     });
 
-    it('should store podiumPlaces on the event', () => {
-      const results = [
+    it('should expose precomputed warnings without mutating events', () => {
+      setupEventWithPodium('333', [
         makeResult(1, 800),
         makeResult(2, 900),
         makeResult(3, 1000)
-      ];
-      setupEventWithResults('333', results);
-      component.getWarningIfAny('333');
-      expect(component.events[0]['podiumPlaces']).toBeDefined();
-      expect(component.events[0]['podiumPlaces'].length).toBe(3);
+      ]);
+      expect(component.getWarningIfAny('333')).toBe('');
+      expect(component.eventWarnings['333']).toBe('');
     });
   });
 
@@ -699,7 +523,7 @@ describe('AppComponent', () => {
       spyOn(window, 'confirm').and.returnValue(true);
       component.competitionId = 'Test2024';
       component.wcif = makeWcif();
-      component.events = [makeEvent('333', [makeRound([])])];
+      component.events = [makeEventWithPodium('333', [makeRound([])])];
       component.error = 'some error';
       component.loading = true;
 
@@ -717,7 +541,7 @@ describe('AppComponent', () => {
       spyOn(window, 'confirm').and.returnValue(false);
       component.competitionId = 'Test2024';
       component.wcif = makeWcif();
-      component.events = [makeEvent('333', [makeRound([])])];
+      component.events = [makeEventWithPodium('333', [makeRound([])])];
 
       component.logout();
 
@@ -791,7 +615,9 @@ describe('AppComponent', () => {
 
     describe('applyPendingNavigation', () => {
       it('should load competition from pending params', () => {
-        spyOn(component.apiService, 'getWcif').and.returnValue(of(makeWcif([makeEvent('333', [makeRound([])])], [makePerson('Alice', 1)])));
+        spyOn(component.apiService, 'getWcif').and.returnValue(of(makeWcif([makeEventWithPodium('333', [makeRound([])])], [makePerson('Alice', 1)])));
+        spyOn(component.apiService, 'getLivePodiums').and.returnValue(of([]));
+        spyOn(component.apiService, 'getCompetitionPodiums').and.returnValue(of([]));
         spyOn(component.apiService, 'getResults').and.returnValue(of([]));
         component.pendingNavigation = { competitionId: 'PendingComp', tabIndex: 1 };
 

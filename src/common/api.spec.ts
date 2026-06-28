@@ -6,6 +6,7 @@ import {AuthService} from './auth';
 import {signal} from '@angular/core';
 import {environment} from '../environments/environment';
 import {WCIF} from './types';
+import * as wcaOpenApi from '../wca-api/openapiClient';
 
 describe('ApiService', () => {
   let service: ApiService;
@@ -275,6 +276,46 @@ describe('ApiService', () => {
     it('should throw error when not authenticated', () => {
       mockAccessToken.set(null);
       expect(() => service.getWcif('TestComp2024')).toThrowError('Not authenticated');
+    });
+  });
+
+  describe('WCA OpenAPI endpoints', () => {
+    it('should map live podiums response data', (done) => {
+      spyOn(wcaOpenApi, 'livePodiums').and.returnValue(
+        Promise.resolve({data: [{id: '333-r1'}]}) as ReturnType<typeof wcaOpenApi.livePodiums>
+      );
+
+      service.getLivePodiums('TestComp2024').subscribe(result => {
+        expect(result.length).toBe(1);
+      expect(result[0].id).toBe('333-r1');
+        done();
+      });
+    });
+
+    it('should return empty array when live podiums request fails', (done) => {
+      spyOn(console, 'error');
+      spyOn(wcaOpenApi, 'livePodiums').and.returnValue(
+        Promise.reject({status: 500}) as ReturnType<typeof wcaOpenApi.livePodiums>
+      );
+
+      service.getLivePodiums('TestComp2024').subscribe(result => {
+        expect(result).toEqual([]);
+        expect(console.error).toHaveBeenCalled();
+        done();
+      });
+    });
+
+    it('should return empty array for 404 without logging an error', (done) => {
+      spyOn(console, 'error');
+      spyOn(wcaOpenApi, 'competitionPodiums').and.returnValue(
+        Promise.reject({status: 404}) as ReturnType<typeof wcaOpenApi.competitionPodiums>
+      );
+
+      service.getCompetitionPodiums('TestComp2024').subscribe(result => {
+        expect(result).toEqual([]);
+        expect(console.error).not.toHaveBeenCalled();
+        done();
+      });
     });
   });
 });

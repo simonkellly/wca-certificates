@@ -323,6 +323,7 @@
                 <div class="flex items-center gap-4">
                   <label for="podium-countries" class="field-label-inline">Countries filter:</label>
                   <input id="podium-countries" [(ngModel)]='printService.countries'
+                         (ngModelChange)="onCountriesFilterChange()"
                          type="text"
                          placeholder="ISO codes (semicolon-separated)"
                          style="flex: 1; max-width: 300px;"/>

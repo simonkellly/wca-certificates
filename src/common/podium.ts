@@ -1,11 +1,14 @@
 import {Result} from '@wca/helpers/lib/models/result';
 import {Helpers} from './helpers';
 
-function primaryTime(result: Result): number {
+export function primaryTime(result: Pick<Result, 'best' | 'average'>): number {
   return result.average > 0 ? result.average : result.best;
 }
 
-function compareByPrimaryTime(a: Result, b: Result): number {
+export function compareByPrimaryTime(
+  a: Pick<Result, 'best' | 'average'>,
+  b: Pick<Result, 'best' | 'average'>
+): number {
   const aTime = primaryTime(a);
   const bTime = primaryTime(b);
   if (aTime !== bTime) {

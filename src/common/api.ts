@@ -1,10 +1,18 @@
 import {Injectable, inject} from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import {Observable, forkJoin, of} from 'rxjs';
+import {HttpClient} from '@angular/common/http';
+import {Observable, forkJoin, from, of} from 'rxjs';
 import {map, catchError} from 'rxjs/operators';
 import {environment} from '../environments/environment';
 import {AuthService} from './auth';
-import {Competition, RawCompetition, CompetitionsApiResponse, WCIF, WcaApiResult} from './types';
+import {Competition, RawCompetition, CompetitionsApiResponse, WCIF} from './types';
+import {configureWcaClient, client, getWcaAuthHeaders} from './wca-client';
+import {
+  competitionPodiums,
+  livePodiums,
+  resultsByCompetition,
+  type LiveRound,
+  type Result as WcaApiResult,
+} from '../wca-api/openapiClient';
 
 @Injectable({
   providedIn: 'root'
@@ -13,7 +21,6 @@ export class ApiService {
 
   private httpClient = inject(HttpClient);
   private authService = inject(AuthService);
-  private headerParams: HttpHeaders;
 
   private ONE_YEAR = 365;
   private EIGHT_WEEKS = 56;
@@ -28,8 +35,7 @@ export class ApiService {
   ];
 
   constructor() {
-    this.headerParams = new HttpHeaders();
-    this.headerParams = this.headerParams.set('Content-Type', 'application/json');
+    configureWcaClient(() => this.authService.getValidAccessToken());
   }
 
   private isNorthernIreland(city: string): boolean {
@@ -45,6 +51,22 @@ export class ApiService {
       city: data.city,
       country: data.country
     };
+  }
+
+  private callWcaApi<T>(
+    call: () => Promise<{data?: T}>,
+    endpointName: string,
+    emptyValue: T
+  ): Observable<T> {
+    return from(call()).pipe(
+      map(response => response.data ?? emptyValue),
+      catchError((error: {status?: number}) => {
+        if (error?.status !== 404) {
+          console.error(`WCA API ${endpointName} failed`, error);
+        }
+        return of(emptyValue);
+      })
+    );
   }
 
   getIrishCompetitions(): Observable<Competition[]> {
@@ -67,7 +89,6 @@ export class ApiService {
 
         const allComps = [...irishComps, ...niComps];
 
-        // Filter by date range (similar to original logic)
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - (environment.testMode ? this.ONE_YEAR : this.EIGHT_WEEKS));
         const endDate = new Date();
@@ -88,15 +109,34 @@ export class ApiService {
     if (!token) {
       throw new Error('Not authenticated');
     }
-    const headers = new HttpHeaders({
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    });
-    return this.httpClient.get<WCIF>(`${environment.wcaUrl}/api/v0/competitions/${competitionId}/wcif/`, {headers});
+    return this.httpClient.get<WCIF>(
+      `${environment.wcaUrl}/api/v0/competitions/${competitionId}/wcif/`,
+      {headers: getWcaAuthHeaders(token)}
+    );
+  }
+
+  getLivePodiums(competitionId: string): Observable<LiveRound[]> {
+    return this.callWcaApi(
+      () => livePodiums({client, path: {competitionId}}),
+      `live/podiums for ${competitionId}`,
+      []
+    );
+  }
+
+  getCompetitionPodiums(competitionId: string): Observable<WcaApiResult[]> {
+    return this.callWcaApi(
+      () => competitionPodiums({client, path: {competitionId}}),
+      `podiums for ${competitionId}`,
+      []
+    );
   }
 
   getResults(competitionId: string): Observable<WcaApiResult[]> {
-    return this.httpClient.get<WcaApiResult[]>(`${environment.wcaUrl}/api/v0/competitions/${competitionId}/results`);
+    return this.callWcaApi(
+      () => resultsByCompetition({client, path: {competitionId}}),
+      `results for ${competitionId}`,
+      []
+    );
   }
 
 }

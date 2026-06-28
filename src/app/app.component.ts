@@ -6,20 +6,23 @@ import {ApiService} from '../common/api';
 import {PrintService} from '../common/print';
 import {AuthService} from '../common/auth';
 import {TemplateExtensionService} from '../common/template-extension';
-import {Event} from '@wca/helpers/lib/models/event';
-import {Result} from '@wca/helpers/lib/models/result';
-import {Person} from '@wca/helpers';
 import { environment } from '../environments/environment';
-import { Competition, WCIF, WcaApiResult } from '../common/types';
+import { Competition, WCIF } from '../common/types';
+import type {Result as WcaApiResult} from '../wca-api/openapiClient';
 import { CertificateEditorComponent } from './certificate-editor/certificate-editor.component';
 import {
   UNOFFICIAL_CERTIFICATE_DEFINITIONS,
   createUnofficialCertificateSelection,
-  getPodiumWarning,
   getUnofficialWarning as getUnofficialCertificateWarning,
   shouldGenerateBlankUnofficialCertificates
 } from '../common/unofficial-certificates';
-import {podiumByRanking} from '../common/podium';
+import {
+  applyPodiumDataToEvents,
+  EventWithPodium,
+  getEventPodiumWarning,
+} from '../common/podium-data';
+import {forkJoin} from 'rxjs';
+import type {LiveRound} from '../wca-api/openapiClient';
 
 /** Parse competition and tab from URL search params */
 export function parseUrlParams(search: string): { competitionId: string | null; tab: string | null } {
@@ -58,8 +61,11 @@ export class AppComponent {
   futureCompetitions: Competition[] = [];
   competitionId: string;
   customCompetitionId: string;
-  events: Event[] = [];
+  events: EventWithPodium[] = [];
   wcif: WCIF | null = null;
+  competitionResults: WcaApiResult[] = [];
+  eventWarnings: Record<string, string> = {};
+  unofficialWarnings: Record<string, string> = {};
   error: string;
   loading: boolean;
 
@@ -187,60 +193,37 @@ export class AppComponent {
 
   private loadWcif() {
     this.loading = true;
-    this.apiService.getWcif(this.competitionId).subscribe(wcif => {
+    forkJoin({
+      wcif: this.apiService.getWcif(this.competitionId),
+      livePodiums: this.apiService.getLivePodiums(this.competitionId),
+      publishedPodiums: this.apiService.getCompetitionPodiums(this.competitionId),
+      results: this.apiService.getResults(this.competitionId),
+    }).subscribe(({wcif, livePodiums, publishedPodiums, results}) => {
       this.wcif = wcif;
-
-      // Check if WCIF already has results
-      const hasResults = wcif.events.some(e =>
-        e.rounds.some(r => r.results && r.results.length > 0)
-      );
-
-      if (hasResults) {
-        this.processWcifResults(wcif);
-      } else {
-        // WCIF has no results, try fetching from /results endpoint (which syncs faster)
-        console.log('WCIF has no results, fetching from /results endpoint...');
-        this.apiService.getResults(this.competitionId).subscribe(
-          apiResults => {
-            if (apiResults && apiResults.length > 0) {
-              console.log(`Found ${apiResults.length} results from /results endpoint`);
-              this.mergeResultsIntoWcif(wcif, apiResults);
-            }
-            this.processWcifResults(wcif);
-          },
-          () => {
-            // If /results endpoint fails, just process with empty results
-            this.processWcifResults(wcif);
-          }
-        );
-      }
+      this.competitionResults = results;
+      this.processWcifResults(wcif, livePodiums, publishedPodiums);
     }, (error: { error?: { error?: string }; message?: string }) => {
       this.loading = false;
       this.error = error?.error?.error || error?.message || 'Failed to load competition data';
     });
   }
 
-  private processWcifResults(wcif: WCIF) {
+  private processWcifResults(
+    wcif: WCIF,
+    livePodiums: LiveRound[],
+    publishedPodiums: WcaApiResult[]
+  ) {
     this.loading = false;
     try {
-      this.events = wcif.events;
-      this.events.forEach(function(e) {
-        if (!e.rounds) return;
-        e.rounds.forEach(function(r) {
-          const resultsOfEvent = r.results;
-          resultsOfEvent.forEach(function(result) {
-            const personOfResult: Person = wcif.persons.filter(p => p.registrantId === result.personId)[0];
-            if (personOfResult) {
-              result['countryIso2'] = personOfResult.countryIso2;
-            }
-          });
-        });
-      });
+      this.events = applyPodiumDataToEvents(wcif, livePodiums, publishedPodiums);
+      wcif.events = this.events;
+      this.recomputeWarnings();
 
       this.state = 'PRINT';
 
       // Auto-load template if one is saved in the WCIF
       this.autoLoadTemplate();
+      this.recomputeWarnings();
     } catch (error) {
       this.loading = false;
       console.error(error);
@@ -249,131 +232,61 @@ export class AppComponent {
     }
   }
 
-  private mergeResultsIntoWcif(wcif: WCIF, apiResults: WcaApiResult[]) {
-    // Group results by event and round
-    const resultsByEventRound = new Map<string, WcaApiResult[]>();
-
-    for (const result of apiResults) {
-      const key = `${result.event_id}-${result.round_type_id}`;
-      if (!resultsByEventRound.has(key)) {
-        resultsByEventRound.set(key, []);
-      }
-      resultsByEventRound.get(key)!.push(result);
-    }
-
-    // Create a map of person names to their registrantIds
-    const personNameToId = new Map<string, number>();
-    for (const person of wcif.persons) {
-      personNameToId.set(person.name, person.registrantId);
-    }
-
-    // Merge results into WCIF events
-    for (const event of wcif.events) {
-      const totalRounds = event.rounds.length;
-
-      for (let roundIndex = 0; roundIndex < totalRounds; roundIndex++) {
-        const round = event.rounds[roundIndex];
-        const isLastRound = roundIndex === totalRounds - 1;
-
-        // Determine which API round_type_id to look for
-        // API uses: "1" (first round), "2" (second), "3" (third/semi), "f" (final), "c" (combined final), "d" (combined first)
-        // WCIF uses: "r1", "r2", "r3", etc.
-        let roundResults: WcaApiResult[] | undefined;
-
-        if (isLastRound) {
-          // Last round - try final types first: f (final), c (combined final)
-          roundResults = resultsByEventRound.get(`${event.id}-f`) ||
-                         resultsByEventRound.get(`${event.id}-c`);
-        }
-
-        if (!roundResults) {
-          // Try numeric round type based on position (1-indexed)
-          const numericRoundType = String(roundIndex + 1);
-          roundResults = resultsByEventRound.get(`${event.id}-${numericRoundType}`);
-        }
-
-        if (!roundResults) {
-          // Try combined first round for first round
-          if (roundIndex === 0) {
-            roundResults = resultsByEventRound.get(`${event.id}-d`);
-          }
-        }
-
-        if (roundResults && roundResults.length > 0) {
-          // Convert API results to WCIF format
-          round.results = roundResults.map(apiResult => {
-            // Try to find the person by name
-            const personId = personNameToId.get(apiResult.name) || 0;
-
-            // Convert attempts array to WCIF format
-            const attempts = apiResult.attempts.map(attemptResult => ({
-              result: attemptResult,
-              reconstruction: null
-            }));
-
-            return {
-              personId,
-              ranking: apiResult.pos,
-              attempts,
-              best: apiResult.best,
-              average: apiResult.average
-            };
-          });
-        }
-      }
-    }
-  }
-
   printCertificatesAsPdf() {
-    this.printService.printCertificatesAsPdf(this.wcif, this.getSelectedCertificateIds());
+    this.printService.printCertificatesAsPdf(this.wcif, this.getSelectedCertificateIds(), this.competitionResults);
   }
 
   printCertificatesAsPreview() {
-    this.printService.printCertificatesAsPreview(this.wcif, this.getSelectedCertificateIds());
+    this.printService.printCertificatesAsPreview(this.wcif, this.getSelectedCertificateIds(), this.competitionResults);
   }
 
   private getSelectedCertificateIds(): string[] {
-    const eventIds = this.events.filter(e => e['printCertificate']).map(e => e.id);
+    const eventIds = this.events.filter(e => e.printCertificate).map(e => e.id);
     const unofficialIds = this.unofficialCertificateRows
       .filter(row => this.unofficialCertificatePrint[row.id])
       .map(row => row.id);
     return [...eventIds, ...unofficialIds];
   }
 
+  onCountriesFilterChange(): void {
+    this.recomputeWarnings();
+  }
+
+  private recomputeWarnings(): void {
+    const countriesFilter = this.printService.countries;
+    this.eventWarnings = Object.fromEntries(
+      this.events.map(event => [
+        event.id,
+        getEventPodiumWarning(event, countriesFilter, true),
+      ])
+    );
+    this.unofficialWarnings = Object.fromEntries(
+      this.unofficialCertificateRows.map(row => [
+        row.id,
+        getUnofficialCertificateWarning(
+          row.id,
+          this.wcif,
+          this.competitionResults,
+          countriesFilter
+        ),
+      ])
+    );
+  }
+
+  getWarningIfAny(eventId: string): string {
+    return this.eventWarnings[eventId] ?? 'Not available yet';
+  }
+
   getUnofficialWarning(unofficialId: string): string {
-    return getUnofficialCertificateWarning(unofficialId, this.wcif, this.printService.countries);
+    return this.unofficialWarnings[unofficialId] ?? 'Not available yet';
   }
 
   toggleUnofficialCertificate(rowId: string, _clickEvent: globalThis.Event): void {
     this.unofficialCertificatePrint[rowId] = !this.unofficialCertificatePrint[rowId];
   }
 
-  getWarningIfAny(eventId: string): string {
-    const event: Event = this.events.filter(e => e.id === eventId)[0];
-    if (!event?.rounds?.length) return 'Not available yet';
-    let results: Result[] = event.rounds[event.rounds.length - 1].results;
-    results = this.filterResultsWithOnlyDNF(results);
-    results = this.filterResultsByCountry(results);
-
-    const podiumPlaces = podiumByRanking(results);
-    event['podiumPlaces'] = podiumPlaces;
-
-    return getPodiumWarning(podiumPlaces.length, true);
-  }
-
-  private filterResultsWithOnlyDNF(results: Result[]): Result[] {
-    return results.filter(r => r['best'] > 0);
-  }
-
-  private filterResultsByCountry(results: Result[]): Result[] {
-    if (!! this.printService.countries && this.printService.countries.length > 0) {
-      return results.filter(r => this.printService.countries.split(';').includes(r['countryIso2']));
-    }
-    return results;
-  }
-
   printDisabled(): boolean {
-    const anyOfficial = this.events.some(e => e['printCertificate']);
+    const anyOfficial = this.events.some(e => e.printCertificate);
     const anyUnofficial = this.unofficialCertificateRows.some(
       row => this.unofficialCertificatePrint[row.id]
     );
@@ -382,7 +295,7 @@ export class AppComponent {
 
   shouldShowBlankCertificatesNotice(): boolean {
     if (this.events.some(event =>
-      event['printCertificate'] && !this.hasFinalRoundResults(event)
+      event.printCertificate && !event.hasPodiumResults
     )) {
       return true;
     }
@@ -391,17 +304,16 @@ export class AppComponent {
     }
     return this.unofficialCertificateRows.some(row =>
       this.unofficialCertificatePrint[row.id] &&
-      shouldGenerateBlankUnofficialCertificates(row.id, this.wcif, this.printService.countries)
+      shouldGenerateBlankUnofficialCertificates(
+        row.id,
+        this.wcif,
+        this.competitionResults,
+        this.printService.countries
+      )
     );
   }
 
-  private hasFinalRoundResults(event: Event): boolean {
-    if (!event?.rounds?.length) return false;
-    const finalRound = event.rounds[event.rounds.length - 1];
-    return !!finalRound?.results?.length;
-  }
-
-  toggleEventSelection(wcaEvent: Event & { printCertificate?: boolean }, _clickEvent: globalThis.Event): void {
+  toggleEventSelection(wcaEvent: EventWithPodium, _clickEvent: globalThis.Event): void {
     // Toggle the checkbox state
     wcaEvent.printCertificate = !wcaEvent.printCertificate;
   }
@@ -447,6 +359,8 @@ export class AppComponent {
     this.competitionId = '';
     this.wcif = null;
     this.events = [];
+    this.eventWarnings = {};
+    this.unofficialWarnings = {};
     this.error = '';
     this.loading = false;
     this.selectedTabIndex = 0;
@@ -487,6 +401,7 @@ export class AppComponent {
           } else {
             this.showTemplateMessage('No saved template found for this competition.', 'info');
           }
+          this.recomputeWarnings();
         }
       },
       error: (err) => {
